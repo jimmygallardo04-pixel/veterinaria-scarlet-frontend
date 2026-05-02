@@ -350,8 +350,8 @@ export default function CalendarioCitasPage() {
             endAccessor="end"
             date={calendarDate}
             view={calendarView}
-            onNavigate={(date) => setCalendarDate(date)}
-            onView={(view) => setCalendarView(view as CalendarView)}
+            onNavigate={(date: Date) => setCalendarDate(date)}
+            onView={(view: string) => setCalendarView(view as CalendarView)}
             views={["month", "week", "day", "agenda"]}
             eventPropGetter={eventStyleGetter}
             onEventDrop={moverCita}
