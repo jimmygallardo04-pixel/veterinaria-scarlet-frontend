@@ -358,7 +358,7 @@ export default function CalendarioCitasPage() {
             onEventResize={moverCita}
             resizable
             selectable
-            onSelectSlot={(slotInfo) => {
+            onSelectSlot={(slotInfo: any) => {
               limpiarForm();
 
               setForm({
@@ -372,7 +372,7 @@ export default function CalendarioCitasPage() {
               setModoEdicion(false);
               setModalOpen(true);
             }}
-            onSelectEvent={(event) => {
+            onSelectEvent={(event: any) => {
               setModoEdicion(true);
               setCitaSeleccionadaId(event.id);
 
