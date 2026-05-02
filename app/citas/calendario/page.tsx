@@ -9,7 +9,9 @@ import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
 import { toast } from "sonner";
 
 const localizer = dayjsLocalizer(dayjs);
-const DnDCalendar = withDragAndDrop(Calendar);
+const DnDCalendar = withDragAndDrop<CalendarEvent, object>(
+  Calendar as any
+) as any;
 
 type Cita = {
   id: number;
