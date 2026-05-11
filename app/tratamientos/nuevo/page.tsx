@@ -3,24 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/api";
+import BackButton from "@/app/components/BackButton";
 
-type Paciente = {
-  id: number;
-  nombre: string;
-  tutor_nombre: string;
-};
+type Paciente = { id: number; nombre: string; tutor_nombre: string; };
 
-type FormTratamiento = {
-  paciente: string;
-  medicamento: string;
-  dosis: string;
-  frecuencia: string;
-  fecha_inicio: string;
-  fecha_fin: string;
-  indicaciones: string;
-};
-
-const formInicial: FormTratamiento = {
+const formInicial = {
   paciente: "",
   medicamento: "",
   dosis: "",
@@ -33,66 +21,30 @@ const formInicial: FormTratamiento = {
 export default function NuevoTratamientoPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
   const pacienteParam = searchParams.get("paciente");
   const fichaParam = searchParams.get("ficha");
 
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
-  const [form, setForm] = useState<FormTratamiento>({
-    ...formInicial,
-    paciente: pacienteParam || "",
-  });
+  const [form, setForm] = useState({ ...formInicial, paciente: pacienteParam || "" });
   const [guardando, setGuardando] = useState(false);
 
-  const getToken = () => sessionStorage.getItem("access");
-
-  const cargarPacientes = async () => {
-    try {
-      const res = await fetch(`${apiUrl}/pacientes/`, {
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
-      });
-
-      if (!res.ok) {
-        toast.error("Error cargando pacientes");
-        return;
-      }
-
-      const data = await res.json();
-      setPacientes(data);
-    } catch (error) {
-      console.log(error);
-      toast.error("Error cargando pacientes");
-    }
-  };
-
   useEffect(() => {
-    cargarPacientes();
+    apiFetch("/pacientes/").then(async (res) => {
+      if (res.ok) setPacientes(await res.json());
+    });
   }, []);
 
   const guardarTratamiento = async () => {
-    if (
-      !form.paciente ||
-      !form.medicamento ||
-      !form.dosis ||
-      !form.frecuencia ||
-      !form.fecha_inicio
-    ) {
+    if (!form.paciente || !form.medicamento || !form.dosis || !form.frecuencia || !form.fecha_inicio) {
       toast.warning("Completa paciente, medicamento, dosis, frecuencia y fecha de inicio");
       return;
     }
 
     try {
       setGuardando(true);
-
-      const res = await fetch(`${apiUrl}/tratamientos/`, {
+      const res = await apiFetch("/tratamientos/", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
-        },
         body: JSON.stringify({
           paciente: Number(form.paciente),
           medicamento: form.medicamento,
@@ -104,62 +56,41 @@ export default function NuevoTratamientoPage() {
         }),
       });
 
-      if (!res.ok) {
-        const error = await res.json();
-        console.log(error);
-        toast.error("No se pudo registrar el tratamiento");
-        return;
-      }
+      if (!res.ok) { toast.error("No se pudo registrar el tratamiento"); return; }
 
       toast.success("Tratamiento registrado correctamente");
-
-      if (fichaParam) {
-        router.push(`/fichas/${fichaParam}`);
-      } else {
-        router.push("/fichas");
-      }
-    } catch (error) {
-      console.log(error);
-      toast.error("Error registrando tratamiento");
+      router.push(fichaParam ? `/fichas/${fichaParam}` : "/fichas");
+    } catch {
+      toast.error("Error de conexión");
     } finally {
       setGuardando(false);
     }
   };
 
-  const pacienteSeleccionado = pacientes.find(
-    (p) => String(p.id) === form.paciente
-  );
+  const pacienteSeleccionado = pacientes.find((p) => String(p.id) === form.paciente);
+  const backHref = fichaParam ? `/fichas/${fichaParam}` : "/fichas";
 
   return (
     <main className="min-h-screen bg-slate-100 p-8">
       <div className="mx-auto max-w-4xl space-y-6">
         <div>
-          <h1 className="title">Registrar tratamiento</h1>
-          <p className="text-muted">
-            Agrega un tratamiento al historial del paciente.
-          </p>
+          <BackButton href={backHref} />
+          <h1 className="title mt-2">Registrar tratamiento</h1>
+          <p className="text-muted">Agrega un tratamiento al historial del paciente.</p>
         </div>
 
         <section className="card">
           <h2 className="subtitle mb-4">Paciente</h2>
-
-          <select
-            className="input w-full"
-            value={form.paciente}
-            onChange={(e) => setForm({ ...form, paciente: e.target.value })}
-          >
+          <select className="input w-full" value={form.paciente}
+            onChange={(e) => setForm({ ...form, paciente: e.target.value })}>
             <option value="">Seleccionar paciente *</option>
             {pacientes.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nombre} · Tutor: {p.tutor_nombre}
-              </option>
+              <option key={p.id} value={p.id}>{p.nombre} · Tutor: {p.tutor_nombre}</option>
             ))}
           </select>
-
           {pacienteSeleccionado && (
-            <p className="mt-3 text-sm text-muted">
-              <strong>{pacienteSeleccionado.nombre}</strong> ·{" "}
-              {pacienteSeleccionado.tutor_nombre}
+            <p className="text-muted mt-2">
+              <strong>{pacienteSeleccionado.nombre}</strong> · {pacienteSeleccionado.tutor_nombre}
             </p>
           )}
         </section>
@@ -167,73 +98,41 @@ export default function NuevoTratamientoPage() {
         <section className="card">
           <h2 className="subtitle mb-4">Tratamiento</h2>
 
-          <input
-            className="input mb-3"
-            placeholder="Medicamento *"
-            value={form.medicamento}
-            onChange={(e) =>
-              setForm({ ...form, medicamento: e.target.value })
-            }
-          />
+          <div className="grid gap-3 md:grid-cols-2">
+            <input className="input md:col-span-2" placeholder="Medicamento *"
+              value={form.medicamento}
+              onChange={(e) => setForm({ ...form, medicamento: e.target.value })} />
 
-          <input
-            className="input mb-3"
-            placeholder="Dosis *"
-            value={form.dosis}
-            onChange={(e) => setForm({ ...form, dosis: e.target.value })}
-          />
+            <input className="input" placeholder="Dosis * (ej: 5mg)"
+              value={form.dosis}
+              onChange={(e) => setForm({ ...form, dosis: e.target.value })} />
 
-          <input
-            className="input mb-3"
-            placeholder="Frecuencia * Ej: cada 12 horas"
-            value={form.frecuencia}
-            onChange={(e) =>
-              setForm({ ...form, frecuencia: e.target.value })
-            }
-          />
+            <input className="input" placeholder="Frecuencia * (ej: cada 12 horas)"
+              value={form.frecuencia}
+              onChange={(e) => setForm({ ...form, frecuencia: e.target.value })} />
 
-          <input
-            className="input mb-3"
-            type="date"
-            value={form.fecha_inicio}
-            onChange={(e) =>
-              setForm({ ...form, fecha_inicio: e.target.value })
-            }
-          />
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Fecha de inicio *</label>
+              <input type="date" className="input" value={form.fecha_inicio}
+                onChange={(e) => setForm({ ...form, fecha_inicio: e.target.value })} />
+            </div>
 
-          <input
-            className="input mb-3"
-            type="date"
-            value={form.fecha_fin}
-            onChange={(e) =>
-              setForm({ ...form, fecha_fin: e.target.value })
-            }
-          />
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Fecha de fin</label>
+              <input type="date" className="input" value={form.fecha_fin}
+                onChange={(e) => setForm({ ...form, fecha_fin: e.target.value })} />
+            </div>
 
-          <textarea
-            className="input"
-            placeholder="Indicaciones"
-            value={form.indicaciones}
-            onChange={(e) =>
-              setForm({ ...form, indicaciones: e.target.value })
-            }
-          />
+            <textarea className="input md:col-span-2" placeholder="Indicaciones" rows={3}
+              value={form.indicaciones}
+              onChange={(e) => setForm({ ...form, indicaciones: e.target.value })} />
+          </div>
 
           <div className="mt-4 flex gap-2">
-            <button
-              onClick={guardarTratamiento}
-              disabled={guardando}
-              className="btn-primary"
-            >
+            <button onClick={guardarTratamiento} disabled={guardando} className="btn-primary">
               {guardando ? "Guardando..." : "Guardar tratamiento"}
             </button>
-
-            <button
-              onClick={() =>
-                fichaParam ? router.push(`/fichas/${fichaParam}`) : router.back()
-              }
-              className="rounded-lg border px-4 py-2"
-            >
+            <button onClick={() => router.push(backHref)} className="btn-secondary">
               Cancelar
             </button>
           </div>

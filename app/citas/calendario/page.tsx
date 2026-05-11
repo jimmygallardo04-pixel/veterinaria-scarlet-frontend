@@ -7,6 +7,9 @@ import dayjs from "dayjs";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/api";
+import BackButton from "@/app/components/BackButton";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 
 const localizer = dayjsLocalizer(dayjs);
 const DnDCalendar = withDragAndDrop<CalendarEvent, object>(
@@ -43,17 +46,14 @@ type CalendarEvent = {
 type CalendarView = "month" | "week" | "day" | "agenda";
 
 export default function CalendarioCitasPage() {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modoEdicion, setModoEdicion] = useState(false);
-  const [citaSeleccionadaId, setCitaSeleccionadaId] = useState<number | null>(
-    null
-  );
+  const [citaSeleccionadaId, setCitaSeleccionadaId] = useState<number | null>(null);
+  const [confirmEliminar, setConfirmEliminar] = useState(false);
 
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState<CalendarView>("month");
@@ -65,8 +65,6 @@ export default function CalendarioCitasPage() {
     observaciones: "",
     estado: "pendiente",
   });
-
-  const getToken = () => sessionStorage.getItem("access");
 
   const limpiarForm = () => {
     setForm({
@@ -122,58 +120,29 @@ export default function CalendarioCitasPage() {
   };
 
   const cargarCitas = async () => {
-    const res = await fetch(`${apiUrl}/citas/`, {
-      headers: {
-        Authorization: `Bearer ${getToken()}`,
-      },
-    });
-
-    if (!res.ok) {
-      toast.error("Error cargando citas");
-      return;
-    }
+    const res = await apiFetch("/citas/");
+    if (!res.ok) { toast.error("Error cargando citas"); return; }
 
     const data: Cita[] = await res.json();
-
-    const eventos = data.map((cita) => {
+    setEvents(data.map((cita) => {
       const inicio = new Date(cita.fecha_hora);
       const fin = new Date(inicio.getTime() + 30 * 60000);
-
-      return {
-        id: cita.id,
-        title: `${cita.paciente_nombre} - ${cita.motivo}`,
-        start: inicio,
-        end: fin,
-        cita,
-      };
-    });
-
-    setEvents(eventos);
+      return { id: cita.id, title: `${cita.paciente_nombre} - ${cita.motivo}`, start: inicio, end: fin, cita };
+    }));
   };
 
   const cargarPacientes = async () => {
-    const res = await fetch(`${apiUrl}/pacientes/`, {
-      headers: {
-        Authorization: `Bearer ${getToken()}`,
-      },
-    });
-
-    if (!res.ok) {
-      toast.error("Error cargando pacientes");
-      return;
-    }
-
-    const data = await res.json();
-    setPacientes(data);
+    const res = await apiFetch("/pacientes/");
+    if (!res.ok) { toast.error("Error cargando pacientes"); return; }
+    setPacientes(await res.json());
   };
 
   const cargarDatos = async () => {
     try {
       setLoading(true);
       await Promise.all([cargarCitas(), cargarPacientes()]);
-    } catch (error) {
+    } catch {
       toast.error("Error cargando calendario");
-      console.log(error);
     } finally {
       setLoading(false);
     }
@@ -196,12 +165,8 @@ export default function CalendarioCitasPage() {
 
     const fechaLocal = dayjs(form.fecha_hora).format("YYYY-MM-DDTHH:mm:ss");
 
-    const res = await fetch(`${apiUrl}/citas/`, {
+    const res = await apiFetch("/citas/", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
-      },
       body: JSON.stringify({
         paciente: pacienteSeleccionado.id,
         tutor: pacienteSeleccionado.tutor,
@@ -213,47 +178,30 @@ export default function CalendarioCitasPage() {
     });
 
     if (!res.ok) {
-      const error = await res.json();
-      console.log(error);
       toast.error("Error creando cita");
       return;
     }
 
     toast.success("Cita creada correctamente");
-
     setModalOpen(false);
     limpiarForm();
     cargarCitas();
   };
 
   const actualizarCita = async () => {
-    if (!citaSeleccionadaId) {
-      toast.error("No hay cita seleccionada");
-      return;
-    }
-
+    if (!citaSeleccionadaId) { toast.error("No hay cita seleccionada"); return; }
     if (!form.paciente || !form.fecha_hora || !form.motivo) {
       toast.warning("Completa paciente, fecha y motivo");
       return;
     }
 
-    const pacienteSeleccionado = pacientes.find(
-      (p) => p.id === Number(form.paciente)
-    );
-
-    if (!pacienteSeleccionado) {
-      toast.error("Paciente no válido");
-      return;
-    }
+    const pacienteSeleccionado = pacientes.find((p) => p.id === Number(form.paciente));
+    if (!pacienteSeleccionado) { toast.error("Paciente no válido"); return; }
 
     const fechaLocal = dayjs(form.fecha_hora).format("YYYY-MM-DDTHH:mm:ss");
 
-    const res = await fetch(`${apiUrl}/citas/${citaSeleccionadaId}/`, {
+    const res = await apiFetch(`/citas/${citaSeleccionadaId}/`, {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
-      },
       body: JSON.stringify({
         paciente: pacienteSeleccionado.id,
         tutor: pacienteSeleccionado.tutor,
@@ -264,15 +212,9 @@ export default function CalendarioCitasPage() {
       }),
     });
 
-    if (!res.ok) {
-      const error = await res.json();
-      console.log(error);
-      toast.error("Error actualizando cita");
-      return;
-    }
+    if (!res.ok) { toast.error("Error actualizando cita"); return; }
 
     toast.success("Cita actualizada correctamente");
-
     setModalOpen(false);
     limpiarForm();
     cargarCitas();
@@ -280,50 +222,23 @@ export default function CalendarioCitasPage() {
 
   const moverCita = async ({ event, start }: any) => {
     const fechaLocal = dayjs(start).format("YYYY-MM-DDTHH:mm:ss");
-
-    const res = await fetch(`${apiUrl}/citas/${event.id}/`, {
+    const res = await apiFetch(`/citas/${event.id}/`, {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
-      },
-      body: JSON.stringify({
-        fecha_hora: fechaLocal,
-      }),
+      body: JSON.stringify({ fecha_hora: fechaLocal }),
     });
-
-    if (!res.ok) {
-      toast.error("Error moviendo cita");
-      return;
-    }
-
+    if (!res.ok) { toast.error("Error moviendo cita"); return; }
     toast.success("Cita actualizada");
     cargarCitas();
   };
 
   const eliminarCita = async () => {
-    if (!citaSeleccionadaId) {
-      toast.error("No hay cita seleccionada");
-      return;
-    }
+    if (!citaSeleccionadaId) return;
+    setConfirmEliminar(false);
 
-    const confirmar = confirm("¿Eliminar esta cita?");
-    if (!confirmar) return;
-
-    const res = await fetch(`${apiUrl}/citas/${citaSeleccionadaId}/`, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${getToken()}`,
-      },
-    });
-
-    if (!res.ok) {
-      toast.error("Error eliminando cita");
-      return;
-    }
+    const res = await apiFetch(`/citas/${citaSeleccionadaId}/`, { method: "DELETE" });
+    if (!res.ok) { toast.error("Error eliminando cita"); return; }
 
     toast.success("Cita eliminada correctamente");
-
     setModalOpen(false);
     limpiarForm();
     cargarCitas();
@@ -334,13 +249,25 @@ export default function CalendarioCitasPage() {
   }, []);
 
   if (loading) {
-    return <main className="p-8">Cargando calendario...</main>;
+    return (
+      <main className="min-h-screen bg-slate-100 p-8">
+        <div className="mx-auto max-w-6xl">
+          <div className="skeleton h-7 w-48 mb-6" />
+          <div className="card skeleton h-[600px]" />
+        </div>
+      </main>
+    );
   }
 
   return (
     <main className="min-h-screen bg-slate-100 p-8">
       <div className="mx-auto max-w-6xl">
-        <h1 className="title mb-6">Agenda de citas</h1>
+        <div className="page-header">
+          <div>
+            <BackButton href="/citas" label="Volver a citas" />
+            <h1 className="title mt-2">Agenda de citas</h1>
+          </div>
+        </div>
 
         <div className="card">
           <DnDCalendar
@@ -407,8 +334,9 @@ export default function CalendarioCitasPage() {
       </div>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="card w-full max-w-md">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => { setModalOpen(false); limpiarForm(); }}>
+          <div className="card w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <h2 className="subtitle mb-4">
               {modoEdicion ? "Editar cita" : "Nueva cita"}
             </h2>
@@ -471,7 +399,7 @@ export default function CalendarioCitasPage() {
             <div className="flex justify-between gap-2">
               <div>
                 {modoEdicion && (
-                  <button onClick={eliminarCita} className="btn-danger text-sm">
+                  <button onClick={() => setConfirmEliminar(true)} className="btn-danger">
                     Eliminar
                   </button>
                 )}
@@ -479,11 +407,8 @@ export default function CalendarioCitasPage() {
 
               <div className="flex gap-2">
                 <button
-                  onClick={() => {
-                    setModalOpen(false);
-                    limpiarForm();
-                  }}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-slate-700 hover:bg-slate-100"
+                  onClick={() => { setModalOpen(false); limpiarForm(); }}
+                  className="btn-secondary"
                 >
                   Cancelar
                 </button>
@@ -499,6 +424,16 @@ export default function CalendarioCitasPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmEliminar}
+        title="Eliminar cita"
+        message="¿Estás seguro de que quieres eliminar esta cita?"
+        confirmLabel="Eliminar"
+        danger
+        onConfirm={eliminarCita}
+        onCancel={() => setConfirmEliminar(false)}
+      />
     </main>
   );
 }

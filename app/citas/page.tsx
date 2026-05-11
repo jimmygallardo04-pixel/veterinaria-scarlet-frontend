@@ -1,206 +1,199 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/api";
+import { usePaginatedFetch } from "@/lib/hooks/usePaginatedFetch";
+import { useConfirmDelete } from "@/lib/hooks/useConfirmDelete";
+import { formatFechaHora } from "@/lib/utils";
+import { ESTADO_CITA_BADGE, ESTADO_CITA_LABEL } from "@/lib/constants";
+import type { Cita, EstadoCita } from "@/lib/types";
+import PageSkeleton from "@/app/components/PageSkeleton";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
+import Pagination from "@/app/components/Pagination";
 
-type Cita = {
-  id: number;
-  paciente: number;
-  paciente_nombre: string;
-  tutor_nombre: string;
-  fecha_hora: string;
-  motivo: string;
-  estado: string;
-};
+// ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function CitasPage() {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const { items: citas, loading, pagination, setPage, reload } =
+    usePaginatedFetch<Cita>("/citas/", "Error cargando citas");
 
-  const [citas, setCitas] = useState<Cita[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { confirmOpen, requestDelete, cancelDelete, confirmDelete } =
+    useConfirmDelete(
+      (id) => `/citas/${id}/`,
+      reload,
+      { success: "Cita eliminada", error: "No se pudo eliminar la cita" }
+    );
 
-  const getToken = () => sessionStorage.getItem("access");
+  const [busqueda, setBusqueda] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState("");
 
-  const cargarCitas = async () => {
-    try {
-      setLoading(true);
+  // ── Filtrado local ────────────────────────────────────────────────────────
 
-      const res = await fetch(`${apiUrl}/citas/`, {
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
-      });
+  const citasFiltradas = useMemo(() => {
+    const q = busqueda.toLowerCase();
+    return citas.filter((c) => {
+      const coincideTexto = `${c.paciente_nombre} ${c.tutor_nombre} ${c.motivo}`
+        .toLowerCase()
+        .includes(q);
+      const coincideEstado = filtroEstado ? c.estado === filtroEstado : true;
+      return coincideTexto && coincideEstado;
+    });
+  }, [citas, busqueda, filtroEstado]);
 
-      if (!res.ok) {
-        toast.error("Error cargando citas");
-        return;
-      }
-
-      const data = await res.json();
-      setCitas(data);
-    } catch (error) {
-      console.log(error);
-      toast.error("Error cargando citas");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    cargarCitas();
+  const limpiarFiltros = useCallback(() => {
+    setBusqueda("");
+    setFiltroEstado("");
   }, []);
 
-  const actualizarEstado = async (id: number, estado: string) => {
+  // ── Actualizar estado ─────────────────────────────────────────────────────
+
+  const actualizarEstado = useCallback(async (id: number, estado: EstadoCita) => {
     try {
-      const res = await fetch(`${apiUrl}/citas/${id}/`, {
+      const res = await apiFetch(`/citas/${id}/`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
-        },
         body: JSON.stringify({ estado }),
       });
-
-      if (!res.ok) {
-        toast.error("No se pudo actualizar la cita");
-        return;
-      }
-
+      if (!res.ok) { toast.error("No se pudo actualizar la cita"); return; }
       toast.success("Estado actualizado");
-      cargarCitas();
-    } catch (error) {
-      console.log(error);
-      toast.error("Error actualizando cita");
+      reload();
+    } catch {
+      toast.error("Error de conexión");
     }
-  };
+  }, [reload]);
 
-  const eliminarCita = async (id: number) => {
-    const confirmar = confirm("¿Eliminar cita?");
-    if (!confirmar) return;
-
-    const res = await fetch(`${apiUrl}/citas/${id}/`, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${getToken()}`,
-      },
-    });
-
-    if (!res.ok) {
-      toast.error("No se pudo eliminar");
-      return;
-    }
-
-    toast.success("Cita eliminada");
-    cargarCitas();
-  };
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <main className="min-h-screen bg-slate-100 p-8">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-6 flex justify-between items-center">
-          <h1 className="title">Citas</h1>
 
-          <Link href="/pacientes" className="btn-primary">
-            Nueva cita
-          </Link>
+        <div className="page-header">
+          <div>
+            <h1 className="title">Citas</h1>
+            <p className="text-muted">Agenda y control de visitas</p>
+          </div>
+          <div className="flex gap-2">
+            <Link href="/citas/calendario" className="btn-secondary">Calendario</Link>
+            <Link href="/citas/nueva" className="btn-primary">+ Nueva cita</Link>
+          </div>
         </div>
 
-        {loading ? (
-          <div className="card">
-            <p className="text-muted">Cargando citas...</p>
+        {/* Filtros */}
+        <div className="card mb-6">
+          <div className="grid gap-3 md:grid-cols-3">
+            <input
+              className="input md:col-span-2"
+              placeholder="Buscar por paciente, tutor o motivo..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+            <select
+              className="input"
+              value={filtroEstado}
+              onChange={(e) => setFiltroEstado(e.target.value)}
+            >
+              <option value="">Todos los estados</option>
+              <option value="pendiente">Pendiente</option>
+              <option value="completada">Completada</option>
+              <option value="cancelada">Cancelada</option>
+            </select>
           </div>
-        ) : citas.length === 0 ? (
-          <div className="card">
-            <p className="text-muted">No hay citas registradas.</p>
+          <div className="flex items-center justify-between mt-3">
+            {!loading && (
+              <p className="text-muted">{citasFiltradas.length} de {citas.length} citas</p>
+            )}
+            {(busqueda || filtroEstado) && (
+              <button onClick={limpiarFiltros} className="btn-ghost text-sm">
+                Limpiar filtros
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Lista */}
+        {loading ? (
+          <PageSkeleton rows={5} />
+        ) : citasFiltradas.length === 0 ? (
+          <div className="card text-center py-12">
+            <p className="text-muted">
+              {busqueda || filtroEstado
+                ? "No hay citas que coincidan con los filtros."
+                : "Aún no hay citas registradas."}
+            </p>
           </div>
         ) : (
           <section className="space-y-3">
-            {citas.map((cita) => (
+            {citasFiltradas.map((cita) => (
               <div key={cita.id} className="card">
                 <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
-
-                  {/* INFO */}
                   <div>
-                    <p className="text-sm text-muted">
-                      {new Date(cita.fecha_hora).toLocaleString()}
-                    </p>
-
-                    <h2 className="font-semibold">
-                      {cita.paciente_nombre}
-                    </h2>
-
-                    <p className="text-sm text-muted">
-                      Tutor: {cita.tutor_nombre}
-                    </p>
-
-                    <p className="text-sm mt-1">
-                      {cita.motivo}
-                    </p>
-
-                    <span className="text-xs mt-1 inline-block">
-                      Estado: <strong>{cita.estado}</strong>
-                    </span>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={ESTADO_CITA_BADGE[cita.estado] ?? "badge-slate"}>
+                        {ESTADO_CITA_LABEL[cita.estado] ?? cita.estado}
+                      </span>
+                      <p className="text-muted">{formatFechaHora(cita.fecha_hora)}</p>
+                    </div>
+                    <h2 className="font-semibold text-slate-900">{cita.paciente_nombre}</h2>
+                    <p className="text-muted">Tutor: {cita.tutor_nombre}</p>
+                    <p className="text-sm text-slate-700 mt-1">{cita.motivo}</p>
                   </div>
 
-                  {/* ACCIONES */}
-                  <div className="flex flex-wrap gap-2">
-
-                    {/* VER PACIENTE */}
-                    <Link
-                      href={`/pacientes/${cita.paciente}`}
-                      className="rounded-lg border px-3 py-2 text-sm"
-                    >
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    <Link href={`/pacientes/${cita.paciente}`} className="btn-secondary">
                       Ver paciente
                     </Link>
-
-                    {/* CREAR FICHA */}
                     <Link
                       href={`/fichas/nueva?paciente=${cita.paciente}&cita=${cita.id}`}
-                      className="bg-green-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-green-700"
+                      className="btn-primary"
                     >
                       Crear ficha
                     </Link>
-
-                    {/* COMPLETAR */}
                     {cita.estado !== "completada" && (
                       <button
-                        onClick={() =>
-                          actualizarEstado(cita.id, "completada")
-                        }
-                        className="rounded-lg border px-3 py-2 text-sm"
+                        onClick={() => actualizarEstado(cita.id, "completada")}
+                        className="btn-secondary"
                       >
-                        Marcar completada
+                        Completar
                       </button>
                     )}
-
-                    {/* CANCELAR */}
                     {cita.estado !== "cancelada" && (
                       <button
-                        onClick={() =>
-                          actualizarEstado(cita.id, "cancelada")
-                        }
-                        className="rounded-lg border px-3 py-2 text-sm text-red-600"
+                        onClick={() => actualizarEstado(cita.id, "cancelada")}
+                        className="btn-danger"
                       >
                         Cancelar
                       </button>
                     )}
-
-                    {/* ELIMINAR */}
-                    <button
-                      onClick={() => eliminarCita(cita.id)}
-                      className="btn-danger text-sm"
-                    >
+                    <button onClick={() => requestDelete(cita.id)} className="btn-danger">
                       Eliminar
                     </button>
-
                   </div>
                 </div>
               </div>
             ))}
           </section>
         )}
+
+        <Pagination
+          count={pagination.totalCount}
+          next={pagination.next}
+          previous={pagination.previous}
+          currentPage={pagination.currentPage}
+          onPageChange={setPage}
+        />
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Eliminar cita"
+        message="¿Estás seguro de que quieres eliminar esta cita?"
+        confirmLabel="Eliminar"
+        danger
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </main>
   );
 }

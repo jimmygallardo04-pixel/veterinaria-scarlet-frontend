@@ -2,136 +2,172 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
+import { apiFetch, type PaginatedResponse } from "@/lib/api";
+import { formatFechaHora } from "@/lib/utils";
+import type { Cita, Resumen } from "@/lib/types";
 
-type Alertas = {
-  resumen: {
-    vacunas_vencidas: number;
-    vacunas_proximas: number;
-    tratamientos_activos: number;
-  };
+// ─── Constantes ───────────────────────────────────────────────────────────────
+
+const ACCESOS = [
+  { href: "/pacientes",     icon: "🐾", label: "Pacientes",      desc: "Ver, crear y gestionar pacientes" },
+  { href: "/fichas",        icon: "📋", label: "Fichas clínicas", desc: "Historial clínico completo" },
+  { href: "/citas",         icon: "📅", label: "Citas",           desc: "Agenda y control de visitas" },
+  { href: "/tutores",       icon: "👤", label: "Tutores",         desc: "Propietarios de los pacientes" },
+  { href: "/alertas",       icon: "🔔", label: "Alertas",         desc: "Vacunas y tratamientos pendientes" },
+  { href: "/configuracion", icon: "⚙️", label: "Configuración",   desc: "Especies, sexos y tipos de documento" },
+] as const;
+
+/**
+ * Formatea la fecha actual en español.
+ * Función (no constante de módulo) para que siempre devuelva la fecha
+ * correcta, incluso si la app lleva abierta varios días.
+ */
+function formatearHoy(): string {
+  return new Date().toLocaleDateString("es-CL", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+// ─── Sub-componentes ──────────────────────────────────────────────────────────
+
+type StatColor = "red" | "yellow" | "green" | "blue";
+
+const STAT_COLORS: Record<StatColor, { border: string; text: string; hover: string }> = {
+  red:    { border: "border-red-500",    text: "text-red-600",    hover: "hover:bg-red-50" },
+  yellow: { border: "border-yellow-500", text: "text-yellow-600", hover: "hover:bg-yellow-50" },
+  green:  { border: "border-green-500",  text: "text-green-600",  hover: "hover:bg-green-50" },
+  blue:   { border: "border-blue-500",   text: "text-blue-600",   hover: "hover:bg-blue-50" },
 };
 
+function StatCard({
+  label, value, color, href, sub,
+}: {
+  label: string; value: number; color: StatColor; href: string; sub: string;
+}) {
+  const { border, text, hover } = STAT_COLORS[color];
+  return (
+    <Link href={href} className={`card border-l-4 ${border} ${hover} transition-colors`}>
+      <p className="text-muted">{label}</p>
+      <p className={`mt-2 text-4xl font-bold ${text}`}>{value}</p>
+      <p className="mt-1 text-muted">{sub}</p>
+    </Link>
+  );
+}
+
+// ─── Componente principal ─────────────────────────────────────────────────────
+
 export default function DashboardPage() {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-  const [alertas, setAlertas] = useState<Alertas | null>(null);
-
-  const getToken = () => sessionStorage.getItem("access");
-
-  const cargarAlertas = async () => {
-    try {
-      const res = await fetch(`${apiUrl}/alertas/`, {
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
-      });
-
-      if (!res.ok) return;
-
-      const data = await res.json();
-      setAlertas(data);
-    } catch (error) {
-      console.log(error);
-      toast.error("Error cargando alertas");
-    }
-  };
+  const [resumen, setResumen] = useState<Resumen | null>(null);
+  const [citasPendientes, setCitasPendientes] = useState<Cita[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    cargarAlertas();
+    const cargar = async () => {
+      try {
+        const [resAlertas, resCitas] = await Promise.all([
+          apiFetch("/alertas/"),
+          apiFetch("/citas/?page_size=20"),
+        ]);
+
+        if (resAlertas.ok) {
+          const data = await resAlertas.json();
+          setResumen(data.resumen);
+        }
+
+        if (resCitas.ok) {
+          const data: PaginatedResponse<Cita> = await resCitas.json();
+          const proximas = data.results
+            .filter((c) => c.estado === "pendiente")
+            .sort((a, b) => new Date(a.fecha_hora).getTime() - new Date(b.fecha_hora).getTime())
+            .slice(0, 5);
+          setCitasPendientes(proximas);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    cargar();
   }, []);
 
   return (
     <main className="min-h-screen bg-slate-100 p-8">
       <div className="mx-auto max-w-6xl space-y-8">
+
         <section>
           <h1 className="title">Dashboard</h1>
-          <p className="text-muted">Gestión clínica veterinaria</p>
+          <p className="text-muted capitalize">{formatearHoy()}</p>
         </section>
 
+        {/* Alertas clínicas */}
         <section>
-          <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center justify-between mb-4">
             <h2 className="subtitle">Alertas clínicas</h2>
-
-            <Link
-              href="/alertas"
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Ver detalle
-            </Link>
+            <Link href="/alertas" className="btn-secondary">Ver detalle</Link>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <Link
-              href="/alertas"
-              className="card border-l-4 border-red-500 hover:bg-red-50"
-            >
-              <p className="text-sm text-muted">Vacunas vencidas</p>
-              <p className="mt-2 text-3xl font-bold text-red-600">
-                {alertas?.resumen?.vacunas_vencidas ?? 0}
-              </p>
-              <p className="mt-1 text-sm text-slate-500">
-                Requieren atención inmediata
-              </p>
-            </Link>
-
-            <Link
-              href="/alertas"
-              className="card border-l-4 border-yellow-500 hover:bg-yellow-50"
-            >
-              <p className="text-sm text-muted">Próximas vacunas</p>
-              <p className="mt-2 text-3xl font-bold text-yellow-600">
-                {alertas?.resumen?.vacunas_proximas ?? 0}
-              </p>
-              <p className="mt-1 text-sm text-slate-500">
-                Vencen dentro de 30 días
-              </p>
-            </Link>
-
-            <Link
-              href="/alertas"
-              className="card border-l-4 border-green-500 hover:bg-green-50"
-            >
-              <p className="text-sm text-muted">Tratamientos activos</p>
-              <p className="mt-2 text-3xl font-bold text-green-600">
-                {alertas?.resumen?.tratamientos_activos ?? 0}
-              </p>
-              <p className="mt-1 text-sm text-slate-500">
-                Pacientes actualmente en tratamiento
-              </p>
-            </Link>
-          </div>
+          {loading ? (
+            <div className="grid gap-4 md:grid-cols-3">
+              {[1, 2, 3].map((i) => <div key={i} className="card skeleton h-28" />)}
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-3">
+              <StatCard label="Vacunas vencidas"    value={resumen?.vacunas_vencidas ?? 0}    color="red"    href="/alertas" sub="Requieren atención inmediata" />
+              <StatCard label="Próximas vacunas"    value={resumen?.vacunas_proximas ?? 0}    color="yellow" href="/alertas" sub="Vencen dentro de 30 días" />
+              <StatCard label="Tratamientos activos" value={resumen?.tratamientos_activos ?? 0} color="green"  href="/alertas" sub="Pacientes en tratamiento" />
+            </div>
+          )}
         </section>
 
+        {/* Próximas citas */}
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="subtitle">Próximas citas pendientes</h2>
+            <Link href="/citas" className="btn-secondary">Ver todas</Link>
+          </div>
+
+          {loading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => <div key={i} className="card skeleton h-16" />)}
+            </div>
+          ) : citasPendientes.length === 0 ? (
+            <div className="card text-center py-8">
+              <p className="text-muted">No hay citas pendientes.</p>
+              <Link href="/citas/nueva" className="btn-primary mt-4 inline-flex">Agendar cita</Link>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {citasPendientes.map((cita) => (
+                <div key={cita.id} className="card flex items-center justify-between gap-4 py-4">
+                  <div>
+                    <p className="font-semibold text-slate-900">{cita.paciente_nombre}</p>
+                    <p className="text-muted">{formatFechaHora(cita.fecha_hora)} · {cita.motivo}</p>
+                  </div>
+                  <Link href={`/fichas/nueva?paciente=${cita.paciente}&cita=${cita.id}`} className="btn-primary shrink-0">
+                    Atender
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Accesos rápidos */}
         <section>
           <h2 className="subtitle mb-4">Accesos rápidos</h2>
-
           <div className="grid gap-4 md:grid-cols-3">
-            <Link href="/pacientes" className="card hover:bg-slate-50">
-              <h3 className="text-lg font-semibold text-slate-900">
-                Pacientes
-              </h3>
-              <p className="mt-1 text-sm text-muted">
-                Ver, crear y gestionar pacientes
-              </p>
-            </Link>
-
-            <Link href="/fichas" className="card hover:bg-slate-50">
-              <h3 className="text-lg font-semibold text-slate-900">
-                Fichas clínicas
-              </h3>
-              <p className="mt-1 text-sm text-muted">
-                Historial clínico completo
-              </p>
-            </Link>
-
-            <Link href="/citas" className="card hover:bg-slate-50">
-              <h3 className="text-lg font-semibold text-slate-900">Citas</h3>
-              <p className="mt-1 text-sm text-muted">
-                Agenda y control de visitas
-              </p>
-            </Link>
+            {ACCESOS.map((a) => (
+              <Link key={a.href} href={a.href} className="card hover:shadow-md hover:border-slate-300 transition-all">
+                <div className="text-2xl mb-2">{a.icon}</div>
+                <h3 className="font-semibold text-slate-900">{a.label}</h3>
+                <p className="text-muted mt-1">{a.desc}</p>
+              </Link>
+            ))}
           </div>
         </section>
+
       </div>
     </main>
   );

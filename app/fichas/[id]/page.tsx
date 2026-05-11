@@ -1,10 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { apiFetch } from "@/lib/api";
+import BackButton from "@/app/components/BackButton";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
+import { formatFechaHora } from "@/lib/utils";
+import { exportarFichaPDF } from "@/lib/pdfExporter";
 
 const BUCKET_NAME = "documentos-veterinaria-scarlet";
 
@@ -61,7 +66,6 @@ type FichaDetalle = {
   especie_nombre: string;
   sexo_nombre: string;
   edad?: number | null;
-
   fecha: string;
   motivo_consulta: string;
   anamnesis?: string | null;
@@ -73,7 +77,6 @@ type FichaDetalle = {
   tratamiento?: string | null;
   indicaciones?: string | null;
   observaciones?: string | null;
-
   vacunas: Vacuna[];
   tratamientos: Tratamiento[];
   archivos: Archivo[];
@@ -82,40 +85,25 @@ type FichaDetalle = {
 
 export default function DetalleFichaPage() {
   const params = useParams();
-  const router = useRouter();
-
   const fichaId = params.id as string;
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
   const [ficha, setFicha] = useState<FichaDetalle | null>(null);
   const [loading, setLoading] = useState(true);
   const [visorUrl, setVisorUrl] = useState<string | null>(null);
+  const [archivoEditando, setArchivoEditando] = useState<Archivo | null>(null);
+  const [tiposArchivo, setTiposArchivo] = useState<{ id: number; nombre: string }[]>([]);
 
-  const [archivoEditando, setArchivoEditando] = useState<any | null>(null);
-  const [tiposArchivo, setTiposArchivo] = useState<any[]>([]);
-
-  const getToken = () => sessionStorage.getItem("access");
+  // Confirm dialog para eliminar archivo
+  const [confirmEliminar, setConfirmEliminar] = useState(false);
+  const [archivoAEliminar, setArchivoAEliminar] = useState<Archivo | null>(null);
 
   const cargarFicha = async () => {
     try {
       setLoading(true);
-
-      const res = await fetch(`${apiUrl}/fichas/${fichaId}/`, {
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
-      });
-
-      if (!res.ok) {
-        toast.error("No se pudo cargar la ficha");
-        setFicha(null);
-        return;
-      }
-
-      const data = await res.json();
-      setFicha(data);
-    } catch (error) {
-      console.log(error);
+      const res = await apiFetch(`/fichas/${fichaId}/`);
+      if (!res.ok) { toast.error("No se pudo cargar la ficha"); setFicha(null); return; }
+      setFicha(await res.json());
+    } catch {
       toast.error("Error cargando ficha");
       setFicha(null);
     } finally {
@@ -123,155 +111,11 @@ export default function DetalleFichaPage() {
     }
   };
 
-  const eliminarArchivo = async (archivo: Archivo) => {
-    const confirmar = confirm("¿Eliminar este documento?");
-    if (!confirmar) return;
-
-    try {
-      if (archivo.storage_path) {
-        const { error } = await supabase.storage
-          .from(BUCKET_NAME)
-          .remove([archivo.storage_path]);
-
-        if (error) {
-          console.log(error);
-          toast.error("No se pudo eliminar el archivo de Supabase");
-          return;
-        }
-      }
-
-      const res = await fetch(`${apiUrl}/archivos/${archivo.id}/`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
-      });
-
-      if (!res.ok) {
-        toast.error("Se eliminó de Supabase, pero no del backend");
-        return;
-      }
-
-      toast.success("Documento eliminado correctamente");
-      cargarFicha();
-    } catch (error) {
-      console.log(error);
-      toast.error("Error eliminando documento");
-    }
-  };
-
-  const reemplazarArchivo = async (archivo: Archivo) => {
-    if (!ficha) return;
-
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*,application/pdf";
-
-    input.onchange = async (e: Event) => {
-      const target = e.target as HTMLInputElement;
-      const file = target.files?.[0];
-
-      if (!file) return;
-
-      try {
-        const extension = file.name.split(".").pop();
-        const fileName = `paciente_${ficha.paciente.id}/${Date.now()}_${crypto.randomUUID()}.${extension}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from(BUCKET_NAME)
-          .upload(fileName, file);
-
-        if (uploadError) {
-          console.log(uploadError);
-          toast.error("Error subiendo archivo");
-          return;
-        }
-
-        const { data } = supabase.storage
-          .from(BUCKET_NAME)
-          .getPublicUrl(fileName);
-
-        if (archivo.storage_path) {
-          await supabase.storage
-            .from(BUCKET_NAME)
-            .remove([archivo.storage_path]);
-        }
-
-        const res = await fetch(`${apiUrl}/archivos/${archivo.id}/`, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${getToken()}`,
-          },
-          body: JSON.stringify({
-            archivo_url: data.publicUrl,
-            storage_path: fileName,
-          }),
-        });
-
-        if (!res.ok) {
-          toast.error("Error actualizando documento");
-          return;
-        }
-
-        toast.success("Documento reemplazado");
-        cargarFicha();
-      } catch (err) {
-        console.log(err);
-        toast.error("Error reemplazando documento");
-      }
-    };
-
-    input.click();
-  };
-
   const cargarTiposArchivo = async () => {
     try {
-      const res = await fetch(`${apiUrl}/tipos-archivo/`, {
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
-      });
-
-      const data = await res.json();
-      setTiposArchivo(data);
-    } catch (e) {
-      console.log(e);
-    }
-  };
-
-  const guardarEdicionArchivo = async () => {
-    if (!archivoEditando) return;
-
-    try {
-      const res = await fetch(
-        `${apiUrl}/archivos/${archivoEditando.id}/`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${getToken()}`,
-          },
-          body: JSON.stringify({
-            tipo: Number(archivoEditando.tipo),
-            fecha: archivoEditando.fecha,
-            observaciones: archivoEditando.observaciones,
-          }),
-        }
-      );
-
-      if (!res.ok) {
-        toast.error("Error actualizando documento");
-        return;
-      }
-
-      toast.success("Documento actualizado");
-      setArchivoEditando(null);
-      cargarFicha();
-    } catch (e) {
-      console.log(e);
-      toast.error("Error");
-    }
+      const res = await apiFetch("/tipos-archivo/");
+      if (res.ok) setTiposArchivo(await res.json());
+    } catch { /* silencioso */ }
   };
 
   useEffect(() => {
@@ -281,18 +125,128 @@ export default function DetalleFichaPage() {
     }
   }, [fichaId]);
 
+  // ── Eliminar archivo ──────────────────────────────────────────────────────
+  const pedirConfirmacionEliminar = (archivo: Archivo) => {
+    setArchivoAEliminar(archivo);
+    setConfirmEliminar(true);
+  };
+
+  const eliminarArchivo = async () => {
+    if (!archivoAEliminar) return;
+    setConfirmEliminar(false);
+
+    try {
+      if (archivoAEliminar.storage_path) {
+        const { error } = await supabase.storage
+          .from(BUCKET_NAME)
+          .remove([archivoAEliminar.storage_path]);
+        if (error) { toast.error("No se pudo eliminar el archivo de Supabase"); return; }
+      }
+
+      const res = await apiFetch(`/archivos/${archivoAEliminar.id}/`, { method: "DELETE" });
+      if (!res.ok) { toast.error("Se eliminó de Supabase, pero no del backend"); return; }
+
+      toast.success("Documento eliminado correctamente");
+      cargarFicha();
+    } catch {
+      toast.error("Error eliminando documento");
+    } finally {
+      setArchivoAEliminar(null);
+    }
+  };
+
+  // ── Reemplazar archivo ────────────────────────────────────────────────────
+  const reemplazarArchivo = (archivo: Archivo) => {
+    if (!ficha) return;
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*,application/pdf";
+
+    input.onchange = async (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        const ext = file.name.split(".").pop();
+        const fileName = `paciente_${ficha.paciente.id}/${Date.now()}_${crypto.randomUUID()}.${ext}`;
+
+        const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(fileName, file);
+        if (uploadError) { toast.error("Error subiendo archivo"); return; }
+
+        const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(fileName);
+
+        if (archivo.storage_path) {
+          await supabase.storage.from(BUCKET_NAME).remove([archivo.storage_path]);
+        }
+
+        const res = await apiFetch(`/archivos/${archivo.id}/`, {
+          method: "PATCH",
+          body: JSON.stringify({ archivo_url: data.publicUrl, storage_path: fileName }),
+        });
+
+        if (!res.ok) { toast.error("Error actualizando documento"); return; }
+
+        toast.success("Documento reemplazado");
+        cargarFicha();
+      } catch {
+        toast.error("Error reemplazando documento");
+      }
+    };
+
+    input.click();
+  };
+
+  // ── Editar metadatos de archivo ───────────────────────────────────────────
+  const guardarEdicionArchivo = async () => {
+    if (!archivoEditando) return;
+
+    try {
+      const res = await apiFetch(`/archivos/${archivoEditando.id}/`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          tipo: Number(archivoEditando.tipo),
+          fecha: archivoEditando.fecha,
+          observaciones: archivoEditando.observaciones,
+        }),
+      });
+
+      if (!res.ok) { toast.error("Error actualizando documento"); return; }
+
+      toast.success("Documento actualizado");
+      setArchivoEditando(null);
+      cargarFicha();
+    } catch {
+      toast.error("Error de conexión");
+    }
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
   if (loading) {
-    return <main className="p-8">Cargando...</main>;
+    return (
+      <main className="min-h-screen bg-slate-100 p-8">
+        <div className="mx-auto max-w-6xl">
+          <div className="skeleton h-6 w-32 mb-6 rounded" />
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="card">
+                <div className="skeleton h-5 w-1/3 mb-3" />
+                <div className="skeleton h-4 w-2/3 mb-2" />
+                <div className="skeleton h-4 w-1/2" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+    );
   }
 
   if (!ficha) {
     return (
       <main className="min-h-screen bg-slate-100 p-8">
         <div className="card mx-auto max-w-4xl">
-          <p className="text-muted">Ficha no encontrada.</p>
-          <button onClick={() => router.back()} className="btn-primary mt-4">
-            Volver
-          </button>
+          <BackButton href="/fichas" />
+          <p className="text-muted mt-4">Ficha no encontrada.</p>
         </div>
       </main>
     );
@@ -301,154 +255,113 @@ export default function DetalleFichaPage() {
   return (
     <main className="min-h-screen bg-slate-100 p-8">
       <div className="mx-auto max-w-6xl space-y-6">
-        {/* HEADER */}
+
+        {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="title">Ficha clínica</h1>
-            <p className="text-muted">
-              {new Date(ficha.fecha).toLocaleString()}
-            </p>
+            <BackButton href="/fichas" label="Volver a fichas" />
+            <h1 className="title mt-2">Ficha clínica</h1>
+            <p className="text-muted">{formatFechaHora(ficha.fecha)}</p>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Link href="/fichas" className="rounded-lg border px-4 py-2">
-              Volver
-            </Link>
-
-            <Link
-              href={`/fichas/${ficha.id}/editar`}
-              className="rounded-lg border px-4 py-2"
+            <button
+              onClick={() => {
+                try {
+                  exportarFichaPDF(ficha);
+                } catch {
+                  toast.error("No se pudo generar el PDF");
+                }
+              }}
+              className="btn-secondary"
             >
+              Exportar PDF
+            </button>
+            <Link href={`/fichas/${ficha.id}/editar`} className="btn-secondary">
               Editar ficha
             </Link>
-
-            <Link
-              href={`/vacunas/nueva?paciente=${ficha.paciente.id}&ficha=${ficha.id}`}
-              className="rounded-lg bg-green-600 px-4 py-2 text-white"
-            >
+            <Link href={`/vacunas/nueva?paciente=${ficha.paciente.id}&ficha=${ficha.id}`} className="btn-primary">
               + Vacuna
             </Link>
-
             <Link
               href={`/tratamientos/nuevo?paciente=${ficha.paciente.id}&ficha=${ficha.id}`}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-white"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
             >
               + Tratamiento
             </Link>
-
             <Link
               href={`/archivos/nuevo?paciente=${ficha.paciente.id}&ficha=${ficha.id}`}
-              className="rounded-lg bg-slate-700 px-4 py-2 text-white"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 transition-colors"
             >
               + Documento
             </Link>
-
-            <Link
-              href={`/pacientes/${ficha.paciente.id}`}
-              className="btn-primary"
-            >
+            <Link href={`/pacientes/${ficha.paciente.id}`} className="btn-secondary">
               Ver paciente
             </Link>
           </div>
         </div>
 
-        {/* PACIENTE */}
+        {/* Paciente */}
         <section className="card">
-          <h2 className="subtitle mb-3">Paciente</h2>
-          <p>
-            <strong>Nombre:</strong> {ficha.paciente_nombre}
-          </p>
-          <p>
-            <strong>Especie:</strong> {ficha.especie_nombre || "-"}
-          </p>
-          <p>
-            <strong>Raza:</strong> {ficha.paciente.raza || "-"}
-          </p>
-          <p>
-            <strong>Sexo:</strong> {ficha.sexo_nombre || "-"}
-          </p>
-          <p>
-            <strong>Edad:</strong> {ficha.edad ?? "-"}
-          </p>
-          <p>
-            <strong>Color:</strong> {ficha.paciente.color || "-"}
-          </p>
-          <p>
-            <strong>Esterilizado:</strong>{" "}
-            {ficha.paciente.esterilizado ? "Sí" : "No"}
-          </p>
-          <p>
-            <strong>Tutor:</strong> {ficha.tutor_nombre}
-          </p>
-        </section>
-
-        {/* CONSULTA COMPLETA */}
-        <section className="card">
-          <h2 className="subtitle mb-3">Consulta</h2>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <p>
-              <strong>Motivo:</strong> {ficha.motivo_consulta}
-            </p>
-            <p>
-              <strong>Peso:</strong> {ficha.peso_kg || "-"} kg
-            </p>
-            <p>
-              <strong>Temperatura:</strong> {ficha.temperatura || "-"} °C
-            </p>
-            <p>
-              <strong>F. cardíaca:</strong>{" "}
-              {ficha.frecuencia_cardiaca || "-"}
-            </p>
-            <p>
-              <strong>F. respiratoria:</strong>{" "}
-              {ficha.frecuencia_respiratoria || "-"}
-            </p>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            <p>
-              <strong>Anamnesis:</strong> {ficha.anamnesis || "-"}
-            </p>
-            <p>
-              <strong>Diagnóstico:</strong> {ficha.diagnostico || "-"}
-            </p>
-            <p>
-              <strong>Tratamiento:</strong> {ficha.tratamiento || "-"}
-            </p>
-            <p>
-              <strong>Indicaciones:</strong> {ficha.indicaciones || "-"}
-            </p>
-            <p>
-              <strong>Observaciones:</strong> {ficha.observaciones || "-"}
-            </p>
+          <h2 className="subtitle mb-4">Paciente</h2>
+          <div className="grid gap-2 md:grid-cols-2 text-sm">
+            <p><strong>Nombre:</strong> {ficha.paciente_nombre}</p>
+            <p><strong>Tutor:</strong> {ficha.tutor_nombre}</p>
+            <p><strong>Especie:</strong> {ficha.especie_nombre || "-"}</p>
+            <p><strong>Raza:</strong> {ficha.paciente.raza || "-"}</p>
+            <p><strong>Sexo:</strong> {ficha.sexo_nombre || "-"}</p>
+            <p><strong>Edad:</strong> {ficha.edad != null ? `${ficha.edad} años` : "-"}</p>
+            <p><strong>Color:</strong> {ficha.paciente.color || "-"}</p>
+            <p><strong>Esterilizado:</strong> {ficha.paciente.esterilizado ? "Sí" : "No"}</p>
           </div>
         </section>
 
-        {/* VACUNAS */}
+        {/* Consulta */}
         <section className="card">
-          <h2 className="subtitle mb-3">Vacunas</h2>
+          <h2 className="subtitle mb-4">Consulta</h2>
 
+          <div className="grid gap-3 md:grid-cols-4 text-sm mb-4">
+            {ficha.peso_kg && <div className="rounded-lg bg-slate-50 p-3 border"><p className="text-muted text-xs">Peso</p><p className="font-semibold">{ficha.peso_kg} kg</p></div>}
+            {ficha.temperatura && <div className="rounded-lg bg-slate-50 p-3 border"><p className="text-muted text-xs">Temperatura</p><p className="font-semibold">{ficha.temperatura} °C</p></div>}
+            {ficha.frecuencia_cardiaca && <div className="rounded-lg bg-slate-50 p-3 border"><p className="text-muted text-xs">F. cardíaca</p><p className="font-semibold">{ficha.frecuencia_cardiaca} lpm</p></div>}
+            {ficha.frecuencia_respiratoria && <div className="rounded-lg bg-slate-50 p-3 border"><p className="text-muted text-xs">F. respiratoria</p><p className="font-semibold">{ficha.frecuencia_respiratoria} rpm</p></div>}
+          </div>
+
+          <div className="space-y-3 text-sm">
+            <div><p className="font-semibold text-slate-700">Motivo de consulta</p><p className="text-slate-600 mt-1">{ficha.motivo_consulta}</p></div>
+            {ficha.anamnesis && <div><p className="font-semibold text-slate-700">Anamnesis</p><p className="text-slate-600 mt-1">{ficha.anamnesis}</p></div>}
+            {ficha.diagnostico && <div><p className="font-semibold text-slate-700">Diagnóstico</p><p className="text-slate-600 mt-1">{ficha.diagnostico}</p></div>}
+            {ficha.tratamiento && <div><p className="font-semibold text-slate-700">Tratamiento</p><p className="text-slate-600 mt-1">{ficha.tratamiento}</p></div>}
+            {ficha.indicaciones && <div><p className="font-semibold text-slate-700">Indicaciones</p><p className="text-slate-600 mt-1">{ficha.indicaciones}</p></div>}
+            {ficha.observaciones && <div><p className="font-semibold text-slate-700">Observaciones</p><p className="text-slate-600 mt-1">{ficha.observaciones}</p></div>}
+          </div>
+        </section>
+
+        {/* Vacunas */}
+        <section className="card">
+          <h2 className="subtitle mb-4">Vacunas</h2>
           {ficha.vacunas.length === 0 ? (
             <p className="text-muted">No hay vacunas registradas.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b text-left">
-                    <th className="py-2">Vacuna</th>
-                    <th>Aplicación</th>
-                    <th>Próxima dosis</th>
-                    <th>Observaciones</th>
+                  <tr className="border-b text-left text-slate-500">
+                    <th className="pb-2 font-medium">Vacuna</th>
+                    <th className="pb-2 font-medium">Aplicación</th>
+                    <th className="pb-2 font-medium">Próxima dosis</th>
+                    <th className="pb-2 font-medium">Observaciones</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {ficha.vacunas.map((vacuna) => (
-                    <tr key={vacuna.id} className="border-b">
-                      <td className="py-2">{vacuna.nombre_vacuna}</td>
-                      <td>{vacuna.fecha_aplicacion}</td>
-                      <td>{vacuna.proxima_dosis || "-"}</td>
-                      <td>{vacuna.observaciones || "-"}</td>
+                  {ficha.vacunas.map((v) => (
+                    <tr key={v.id} className="border-b last:border-0">
+                      <td className="py-2 font-medium">{v.nombre_vacuna}</td>
+                      <td className="py-2">{v.fecha_aplicacion}</td>
+                      <td className={`py-2 ${v.proxima_dosis && new Date(v.proxima_dosis) < new Date() ? "text-red-600 font-medium" : ""}`}>
+                        {v.proxima_dosis || "-"}
+                      </td>
+                      <td className="py-2 text-slate-500">{v.observaciones || "-"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -457,69 +370,56 @@ export default function DetalleFichaPage() {
           )}
         </section>
 
-        {/* TRATAMIENTOS */}
+        {/* Tratamientos */}
         <section className="card">
-          <h2 className="subtitle mb-3">Tratamientos</h2>
-
+          <h2 className="subtitle mb-4">Tratamientos</h2>
           {ficha.tratamientos.length === 0 ? (
             <p className="text-muted">No hay tratamientos registrados.</p>
           ) : (
             <div className="space-y-3">
-              {ficha.tratamientos.map((tratamiento) => (
-                <div key={tratamiento.id} className="rounded-lg border p-3">
-                  <p className="font-semibold">{tratamiento.medicamento}</p>
-                  <p className="text-sm text-muted">
-                    {tratamiento.dosis} · {tratamiento.frecuencia}
+              {ficha.tratamientos.map((t) => (
+                <div key={t.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <p className="font-semibold text-slate-900">{t.medicamento}</p>
+                  <p className="text-muted">{t.dosis} · {t.frecuencia}</p>
+                  <p className="text-muted">
+                    {t.fecha_inicio} → {t.fecha_fin || "indefinido"}
                   </p>
-                  <p className="text-sm text-muted">
-                    Desde {tratamiento.fecha_inicio} hasta{" "}
-                    {tratamiento.fecha_fin || "-"}
-                  </p>
-
-                  {tratamiento.indicaciones && (
-                    <p className="mt-2 text-sm">{tratamiento.indicaciones}</p>
-                  )}
+                  {t.indicaciones && <p className="text-sm text-slate-700 mt-2">{t.indicaciones}</p>}
                 </div>
               ))}
             </div>
           )}
         </section>
 
-        {/* HISTORIAL */}
+        {/* Historial */}
         <section className="card">
-          <h2 className="subtitle mb-3">Historial de fichas</h2>
-
+          <h2 className="subtitle mb-4">Historial de fichas del paciente</h2>
           {ficha.historial_fichas.length === 0 ? (
             <p className="text-muted">No hay fichas anteriores.</p>
           ) : (
-            <div className="space-y-3">
-              {ficha.historial_fichas.map((historial) => (
+            <div className="space-y-2">
+              {ficha.historial_fichas.map((h) => (
                 <Link
-                  key={historial.id}
-                  href={`/fichas/${historial.id}`}
-                  className="block rounded-lg border p-3 hover:bg-slate-50"
+                  key={h.id}
+                  href={`/fichas/${h.id}`}
+                  className="flex items-center justify-between rounded-lg border border-slate-200 p-3 hover:bg-slate-50 transition-colors"
                 >
-                  <p className="text-sm text-muted">
-                    {new Date(historial.fecha).toLocaleString()}
-                  </p>
-                  <p className="font-semibold">
-                    {historial.motivo_consulta}
-                  </p>
-                  <p className="text-sm text-muted">
-                    Diagnóstico: {historial.diagnostico || "-"}
-                  </p>
+                  <div>
+                    <p className="font-medium text-slate-900">{h.motivo_consulta}</p>
+                    <p className="text-muted">{formatFechaHora(h.fecha)}</p>
+                  </div>
+                  <span className="text-slate-400 text-sm">→</span>
                 </Link>
               ))}
             </div>
           )}
         </section>
 
-        {/* ARCHIVOS */}
+        {/* Archivos */}
         <section className="card">
-          <h2 className="subtitle mb-3">Archivos</h2>
-
+          <h2 className="subtitle mb-4">Documentos</h2>
           {ficha.archivos.length === 0 ? (
-            <p className="text-muted">No hay archivos registrados.</p>
+            <p className="text-muted">No hay documentos adjuntos.</p>
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
               {ficha.archivos.map((archivo) => {
@@ -528,14 +428,14 @@ export default function DetalleFichaPage() {
                 const esPdf = /\.pdf$/i.test(url);
 
                 return (
-                  <div key={archivo.id} className="rounded-lg border p-3">
-                    <div className="mb-2">
-                      <p className="font-semibold capitalize">
-                        {archivo.tipo_nombre || archivo.tipo || "Documento"}
-                      </p>
-                      <p className="text-sm text-muted">
-                        {archivo.fecha || "Sin fecha"}
-                      </p>
+                  <div key={archivo.id} className="rounded-xl border border-slate-200 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <p className="font-semibold text-slate-900 capitalize">
+                          {archivo.tipo_nombre || "Documento"}
+                        </p>
+                        <p className="text-muted">{archivo.fecha || "Sin fecha"}</p>
+                      </div>
                     </div>
 
                     {esImagen && (
@@ -543,62 +443,37 @@ export default function DetalleFichaPage() {
                         src={url}
                         alt={archivo.tipo_nombre || "Documento"}
                         onClick={() => setVisorUrl(url)}
-                        className="mb-3 max-h-48 w-full cursor-pointer rounded-lg object-cover"
+                        className="mb-3 max-h-48 w-full cursor-pointer rounded-lg object-cover hover:opacity-90 transition-opacity"
                       />
                     )}
 
                     {esPdf && (
                       <div className="mb-3 overflow-hidden rounded-lg border bg-white">
-                        <iframe
-                          src={url}
-                          className="h-72 w-full"
-                          title={archivo.tipo_nombre || "Documento PDF"}
-                        />
-
-                        <div className="border-t bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                          Vista previa del PDF
-                          <button
-                            onClick={() => setVisorUrl(url)}
-                            className="ml-2 text-xs font-medium text-blue-600 hover:underline"
-                          >
-                            Ver grande
+                        <iframe src={url} className="h-64 w-full" title={archivo.tipo_nombre || "PDF"} />
+                        <div className="border-t bg-slate-50 px-3 py-2 text-xs text-slate-500 flex items-center justify-between">
+                          <span>Vista previa</span>
+                          <button onClick={() => setVisorUrl(url)} className="text-blue-600 hover:underline font-medium">
+                            Ver completo
                           </button>
                         </div>
                       </div>
                     )}
 
                     {archivo.observaciones && (
-                      <p className="mb-3 text-sm">{archivo.observaciones}</p>
+                      <p className="text-sm text-slate-600 mb-3">{archivo.observaciones}</p>
                     )}
 
                     <div className="flex flex-wrap gap-2">
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn-primary inline-block text-sm"
-                      >
-                        {esPdf ? "Abrir PDF" : "Ver documento"}
+                      <a href={url} target="_blank" rel="noreferrer" className="btn-primary text-sm">
+                        {esPdf ? "Abrir PDF" : "Ver"}
                       </a>
-
-                      <button
-                        onClick={() => reemplazarArchivo(archivo)}
-                        className="rounded-lg bg-yellow-500 px-3 py-1 text-sm text-white hover:bg-yellow-600"
-                      >
+                      <button onClick={() => reemplazarArchivo(archivo)} className="rounded-lg bg-yellow-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-yellow-600 transition-colors">
                         Reemplazar
                       </button>
-
-                      <button
-                        onClick={() => setArchivoEditando({ ...archivo })}
-                        className="rounded-lg bg-blue-600 px-3 py-1 text-sm text-white"
-                      >
+                      <button onClick={() => setArchivoEditando({ ...archivo })} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors">
                         Editar
                       </button>
-
-                      <button
-                        onClick={() => eliminarArchivo(archivo)}
-                        className="btn-danger text-sm"
-                      >
+                      <button onClick={() => pedirConfirmacionEliminar(archivo)} className="btn-danger text-sm">
                         Eliminar
                       </button>
                     </div>
@@ -610,110 +485,90 @@ export default function DetalleFichaPage() {
         </section>
       </div>
 
+      {/* Visor de imagen/PDF a pantalla completa */}
       {visorUrl && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
           onClick={() => setVisorUrl(null)}
         >
           <div
-            className="relative w-full max-w-6xl overflow-hidden rounded-lg bg-white"
+            className="relative w-full max-w-6xl overflow-hidden rounded-xl bg-white"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={() => setVisorUrl(null)}
-              className="absolute right-3 top-3 z-10 rounded-full bg-black/70 px-3 py-1 text-sm text-white"
+              className="absolute right-3 top-3 z-10 rounded-full bg-black/60 px-3 py-1 text-sm text-white hover:bg-black/80"
             >
-              Cerrar
+              ✕ Cerrar
             </button>
-
             {visorUrl.match(/\.pdf$/i) ? (
-              <iframe
-                src={visorUrl}
-                className="h-[85vh] w-full"
-                title="Vista ampliada PDF"
-              />
+              <iframe src={visorUrl} className="h-[85vh] w-full" title="Vista ampliada PDF" />
             ) : (
-              <img
-                src={visorUrl}
-                alt="Vista ampliada"
-                className="max-h-[85vh] w-full object-contain"
-              />
+              <img src={visorUrl} alt="Vista ampliada" className="max-h-[85vh] w-full object-contain" />
             )}
           </div>
         </div>
       )}
 
+      {/* Modal editar metadatos de archivo */}
       {archivoEditando && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           onClick={() => setArchivoEditando(null)}
         >
           <div
-            className="w-full max-w-md rounded-lg bg-white p-6 space-y-4"
+            className="w-full max-w-md rounded-xl bg-white p-6 space-y-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-semibold">Editar documento</h2>
+            <h2 className="subtitle">Editar documento</h2>
 
             <select
               className="input w-full"
               value={archivoEditando.tipo || ""}
-              onChange={(e) =>
-                setArchivoEditando({
-                  ...archivoEditando,
-                  tipo: e.target.value,
-                })
-              }
+              onChange={(e) => setArchivoEditando({ ...archivoEditando, tipo: e.target.value })}
             >
-              <option value="">Tipo</option>
+              <option value="">Tipo de documento</option>
               {tiposArchivo.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nombre}
-                </option>
+                <option key={t.id} value={t.id}>{t.nombre}</option>
               ))}
             </select>
 
-            <input
-              type="date"
-              className="input w-full"
-              value={archivoEditando.fecha || ""}
-              onChange={(e) =>
-                setArchivoEditando({
-                  ...archivoEditando,
-                  fecha: e.target.value,
-                })
-              }
-            />
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Fecha</label>
+              <input
+                type="date"
+                className="input w-full"
+                value={archivoEditando.fecha || ""}
+                onChange={(e) => setArchivoEditando({ ...archivoEditando, fecha: e.target.value })}
+              />
+            </div>
 
             <textarea
               className="input w-full"
               placeholder="Observaciones"
+              rows={3}
               value={archivoEditando.observaciones || ""}
-              onChange={(e) =>
-                setArchivoEditando({
-                  ...archivoEditando,
-                  observaciones: e.target.value,
-                })
-              }
+              onChange={(e) => setArchivoEditando({ ...archivoEditando, observaciones: e.target.value })}
             />
 
-            <div className="flex gap-2">
-              <button
-                onClick={guardarEdicionArchivo}
-                className="btn-primary"
-              >
-                Guardar
-              </button>
-
-              <button
-                onClick={() => setArchivoEditando(null)}
-                className="btn-secondary"
-              >
-                Cancelar
-              </button>
+            <div className="flex gap-2 pt-2">
+              <button onClick={guardarEdicionArchivo} className="btn-primary">Guardar</button>
+              <button onClick={() => setArchivoEditando(null)} className="btn-secondary">Cancelar</button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Confirm eliminar archivo */}
+      <ConfirmDialog
+        open={confirmEliminar}
+        title="Eliminar documento"
+        message="¿Estás seguro? El archivo se eliminará permanentemente de Supabase y del sistema."
+        confirmLabel="Eliminar"
+        danger
+        onConfirm={eliminarArchivo}
+        onCancel={() => { setConfirmEliminar(false); setArchivoAEliminar(null); }}
+      />
     </main>
   );
 }
