@@ -14,6 +14,7 @@ type DatosForm = {
   nombre_clinica: string;
   nombre_admin: string;
   password: string;
+  clave_acceso: string;
 };
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -35,6 +36,7 @@ export default function RegistroPage() {
     nombre_clinica: "",
     nombre_admin: "",
     password: "",
+    clave_acceso: "",
   });
   const [datosErrors, setDatosErrors] = useState<{ email?: string; password?: string }>({});
 
@@ -118,7 +120,7 @@ export default function RegistroPage() {
 
   const handleCrearCuenta = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!datos.nombre_clinica || !datos.nombre_admin || !datos.password) {
+    if (!datos.nombre_clinica || !datos.nombre_admin || !datos.password || !datos.clave_acceso) {
       toast.warning("Completa todos los campos");
       return;
     }
@@ -135,6 +137,7 @@ export default function RegistroPage() {
           nombre_admin: datos.nombre_admin.trim(),
           email: email.trim(),
           password: datos.password,
+          registro_secret_key: datos.clave_acceso,
         }),
       });
 
@@ -155,8 +158,13 @@ export default function RegistroPage() {
         return;
       }
 
-      toast.error("Error al registrar. Intenta nuevamente.");
-    } catch {
+      if (res.status === 403) {
+        const errorData = await res.json();
+        toast.error(errorData.detail || "Clave de acceso incorrecta.");
+        return;
+      }
+
+      toast.error("Error al registrar. Intenta nuevamente.");    } catch {
       toast.error("Error de conexión. Intenta nuevamente.");
     } finally {
       setLoading(false);
@@ -328,6 +336,23 @@ export default function RegistroPage() {
               {datosErrors.password && (
                 <p className="mt-1 text-sm text-red-600">{datosErrors.password}</p>
               )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Clave de acceso
+              </label>
+              <input
+                className="input"
+                placeholder="Clave proporcionada por el administrador"
+                type="password"
+                value={datos.clave_acceso}
+                onChange={(e) => setDatos((p) => ({ ...p, clave_acceso: e.target.value }))}
+                autoComplete="off"
+                disabled={loading}
+              />
+              <p className="mt-1.5 text-xs text-slate-500">
+                Solicita esta clave al administrador del sistema para poder crear tu cuenta.
+              </p>
             </div>
             {datosErrors.email && (
               <p className="text-sm text-red-600">{datosErrors.email}</p>
