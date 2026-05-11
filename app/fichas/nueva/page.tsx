@@ -3,12 +3,18 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/api";
+import BackButton from "@/app/components/BackButton";
 
 type Paciente = {
   id: number;
   nombre: string;
   tutor_nombre: string;
   especie_nombre?: string;
+  raza?: string | null;
+  edad?: number | null;
+  color?: string | null;
+  esterilizado?: boolean;
 };
 
 type FichaForm = {
@@ -39,48 +45,40 @@ const formInicial: FichaForm = {
   observaciones: "",
 };
 
+function Campo({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
+      {children}
+    </div>
+  );
+}
+
 export default function NuevaFichaPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-
   const pacienteParam = searchParams.get("paciente");
-  const citaParam = searchParams.get("cita"); // 🔥 NUEVO
+  const citaParam = searchParams.get("cita");
 
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [form, setForm] = useState<FichaForm>({
     ...formInicial,
     paciente: pacienteParam || "",
   });
-
   const [guardando, setGuardando] = useState(false);
 
-  const getToken = () => sessionStorage.getItem("access");
-
-  const cargarPacientes = async () => {
-    try {
-      const res = await fetch(`${apiUrl}/pacientes/`, {
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
-      });
-
-      if (!res.ok) {
-        toast.error("No se pudieron cargar los pacientes");
-        return;
-      }
-
-      const data = await res.json();
-      setPacientes(data);
-    } catch (error) {
-      console.log(error);
-      toast.error("Error cargando pacientes");
-    }
-  };
-
   useEffect(() => {
-    cargarPacientes();
+    apiFetch("/pacientes/").then(async (res) => {
+      if (res.ok) setPacientes(await res.json());
+      else toast.error("No se pudieron cargar los pacientes");
+    }).catch(() => toast.error("Error de conexión"));
   }, []);
+
+  const f = (key: keyof FichaForm) => ({
+    value: form[key],
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      setForm({ ...form, [key]: e.target.value }),
+  });
 
   const crearFicha = async () => {
     if (!form.paciente || !form.motivo_consulta) {
@@ -91,24 +89,16 @@ export default function NuevaFichaPage() {
     try {
       setGuardando(true);
 
-      const res = await fetch(`${apiUrl}/fichas/`, {
+      const res = await apiFetch("/fichas/", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
-        },
         body: JSON.stringify({
           paciente: Number(form.paciente),
           motivo_consulta: form.motivo_consulta,
           anamnesis: form.anamnesis || null,
           peso_kg: form.peso_kg || null,
           temperatura: form.temperatura || null,
-          frecuencia_cardiaca: form.frecuencia_cardiaca
-            ? Number(form.frecuencia_cardiaca)
-            : null,
-          frecuencia_respiratoria: form.frecuencia_respiratoria
-            ? Number(form.frecuencia_respiratoria)
-            : null,
+          frecuencia_cardiaca: form.frecuencia_cardiaca ? Number(form.frecuencia_cardiaca) : null,
+          frecuencia_respiratoria: form.frecuencia_respiratoria ? Number(form.frecuencia_respiratoria) : null,
           diagnostico: form.diagnostico || null,
           tratamiento: form.tratamiento || null,
           indicaciones: form.indicaciones || null,
@@ -116,54 +106,41 @@ export default function NuevaFichaPage() {
         }),
       });
 
-      if (!res.ok) {
-        const error = await res.json();
-        console.log(error);
-        toast.error("No se pudo crear la ficha clínica");
-        return;
-      }
+      if (!res.ok) { toast.error("No se pudo crear la ficha clínica"); return; }
 
       const data = await res.json();
 
-      // 🔥 NUEVO: completar cita automáticamente
       if (citaParam) {
-        await fetch(`${apiUrl}/citas/${citaParam}/`, {
+        await apiFetch(`/citas/${citaParam}/`, {
           method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${getToken()}`,
-          },
-          body: JSON.stringify({
-            estado: "completada",
-          }),
+          body: JSON.stringify({ estado: "completada" }),
         });
+        toast.success("Ficha creada y cita marcada como completada");
+      } else {
+        toast.success("Ficha clínica creada correctamente");
       }
 
-      toast.success("Ficha clínica creada correctamente");
-
       router.push(`/fichas/${data.id}`);
-    } catch (error) {
-      console.log(error);
+    } catch {
       toast.error("Error creando ficha clínica");
     } finally {
       setGuardando(false);
     }
   };
 
-  const pacienteSeleccionado = pacientes.find(
-    (p) => String(p.id) === form.paciente
-  );
+  const pacienteSeleccionado = pacientes.find((p) => String(p.id) === form.paciente);
 
   return (
     <main className="min-h-screen bg-slate-100 p-8">
       <div className="mx-auto max-w-5xl space-y-6">
+
         <div>
-          <h1 className="title">Nueva ficha clínica</h1>
-          <p className="text-muted">
-            Registra una nueva atención médica.
-          </p>
+          <BackButton href="/fichas" label="Volver a fichas" />
+          <h1 className="title mt-2">Nueva ficha clínica</h1>
+          <p className="text-muted">Registra una nueva atención médica.</p>
         </div>
 
+        {/* ── Paciente ─────────────────────────────────────────────────── */}
         <section className="card">
           <h2 className="subtitle mb-4">Paciente</h2>
 
@@ -175,66 +152,84 @@ export default function NuevaFichaPage() {
             <option value="">Seleccionar paciente *</option>
             {pacientes.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.nombre} · Tutor: {p.tutor_nombre}
+                {p.nombre} · {p.especie_nombre ?? "Sin especie"} · Tutor: {p.tutor_nombre}
               </option>
             ))}
           </select>
 
           {pacienteSeleccionado && (
-            <p className="mt-3 text-sm text-muted">
-              <strong>{pacienteSeleccionado.nombre}</strong> ·{" "}
-              {pacienteSeleccionado.tutor_nombre}
-            </p>
+            <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm md:grid-cols-4">
+              <div><p className="text-muted text-xs">Especie</p><p className="font-medium">{pacienteSeleccionado.especie_nombre ?? "-"}</p></div>
+              <div><p className="text-muted text-xs">Raza</p><p className="font-medium">{pacienteSeleccionado.raza ?? "-"}</p></div>
+              <div><p className="text-muted text-xs">Edad</p><p className="font-medium">{pacienteSeleccionado.edad != null ? `${pacienteSeleccionado.edad} años` : "-"}</p></div>
+              <div><p className="text-muted text-xs">Esterilizado</p><p className="font-medium">{pacienteSeleccionado.esterilizado ? "Sí" : "No"}</p></div>
+            </div>
           )}
         </section>
 
+        {/* ── Signos vitales ────────────────────────────────────────────── */}
         <section className="card">
-          <h2 className="subtitle mb-4">Consulta</h2>
-
-          <input
-            className="input mb-3"
-            placeholder="Motivo de consulta *"
-            value={form.motivo_consulta}
-            onChange={(e) =>
-              setForm({ ...form, motivo_consulta: e.target.value })
-            }
-          />
-
-          <textarea
-            className="input mb-3"
-            placeholder="Diagnóstico"
-            value={form.diagnostico}
-            onChange={(e) =>
-              setForm({ ...form, diagnostico: e.target.value })
-            }
-          />
-
-          <textarea
-            className="input mb-3"
-            placeholder="Tratamiento"
-            value={form.tratamiento}
-            onChange={(e) =>
-              setForm({ ...form, tratamiento: e.target.value })
-            }
-          />
-
-          <div className="flex gap-2 mt-4">
-            <button
-              onClick={crearFicha}
-              disabled={guardando}
-              className="btn-primary"
-            >
-              {guardando ? "Guardando..." : "Guardar ficha"}
-            </button>
-
-            <button
-              onClick={() => router.back()}
-              className="rounded-lg border px-4 py-2"
-            >
-              Cancelar
-            </button>
+          <h2 className="subtitle mb-4">Signos vitales</h2>
+          <div className="grid gap-4 md:grid-cols-4">
+            <Campo label="Peso (kg)">
+              <input className="input" type="number" step="0.01" min="0" placeholder="Ej: 4.5" {...f("peso_kg")} />
+            </Campo>
+            <Campo label="Temperatura (°C)">
+              <input className="input" type="number" step="0.1" min="30" max="45" placeholder="Ej: 38.5" {...f("temperatura")} />
+            </Campo>
+            <Campo label="Frec. cardíaca (lpm)">
+              <input className="input" type="number" min="0" placeholder="Ej: 80" {...f("frecuencia_cardiaca")} />
+            </Campo>
+            <Campo label="Frec. respiratoria (rpm)">
+              <input className="input" type="number" min="0" placeholder="Ej: 20" {...f("frecuencia_respiratoria")} />
+            </Campo>
           </div>
         </section>
+
+        {/* ── Consulta ──────────────────────────────────────────────────── */}
+        <section className="card space-y-4">
+          <h2 className="subtitle">Consulta</h2>
+
+          <Campo label="Motivo de consulta *">
+            <input className="input" placeholder="¿Por qué consulta hoy?" {...f("motivo_consulta")} />
+          </Campo>
+
+          <Campo label="Anamnesis">
+            <textarea className="input" rows={3} placeholder="Historia clínica, síntomas previos, evolución..." {...f("anamnesis")} />
+          </Campo>
+
+          <Campo label="Diagnóstico">
+            <textarea className="input" rows={3} placeholder="Diagnóstico presuntivo o definitivo..." {...f("diagnostico")} />
+          </Campo>
+
+          <Campo label="Tratamiento">
+            <textarea className="input" rows={3} placeholder="Medicamentos, procedimientos indicados..." {...f("tratamiento")} />
+          </Campo>
+
+          <Campo label="Indicaciones para el tutor">
+            <textarea className="input" rows={2} placeholder="Cuidados en casa, restricciones, dieta..." {...f("indicaciones")} />
+          </Campo>
+
+          <Campo label="Observaciones">
+            <textarea className="input" rows={2} placeholder="Notas adicionales..." {...f("observaciones")} />
+          </Campo>
+        </section>
+
+        {/* ── Acciones ──────────────────────────────────────────────────── */}
+        <div className="flex gap-3 pb-8">
+          <button onClick={crearFicha} disabled={guardando} className="btn-primary">
+            {guardando ? (
+              <span className="flex items-center gap-2">
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Guardando...
+              </span>
+            ) : "Guardar ficha"}
+          </button>
+          <button onClick={() => router.back()} className="btn-secondary">
+            Cancelar
+          </button>
+        </div>
+
       </div>
     </main>
   );

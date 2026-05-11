@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/api";
+import BackButton from "@/app/components/BackButton";
 
 type Paciente = {
   id: number;
@@ -42,66 +44,45 @@ const formInicial: FichaForm = {
 export default function EditarFichaPage() {
   const params = useParams();
   const router = useRouter();
-
   const fichaId = params.id as string;
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [form, setForm] = useState<FichaForm>(formInicial);
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
 
-  const getToken = () => sessionStorage.getItem("access");
+  const pacienteSeleccionado = useMemo(
+    () => pacientes.find((p) => String(p.id) === form.paciente) ?? null,
+    [pacientes, form.paciente]
+  );
 
   const cargarPacientes = async () => {
-    const res = await fetch(`${apiUrl}/pacientes/`, {
-      headers: {
-        Authorization: `Bearer ${getToken()}`,
-      },
-    });
-
+    const res = await apiFetch("/pacientes/");
     if (!res.ok) return;
-
-    const data = await res.json();
-    setPacientes(data);
+    setPacientes(await res.json());
   };
 
   const cargarFicha = async () => {
     try {
       setLoading(true);
-
-      const res = await fetch(`${apiUrl}/fichas/${fichaId}/`, {
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
-      });
-
-      if (!res.ok) {
-        toast.error("No se pudo cargar la ficha");
-        return;
-      }
+      const res = await apiFetch(`/fichas/${fichaId}/`);
+      if (!res.ok) { toast.error("No se pudo cargar la ficha"); return; }
 
       const data = await res.json();
-
       setForm({
         paciente: String(data.paciente?.id ?? data.paciente ?? ""),
         motivo_consulta: data.motivo_consulta || "",
         anamnesis: data.anamnesis || "",
         peso_kg: data.peso_kg || "",
         temperatura: data.temperatura || "",
-        frecuencia_cardiaca: data.frecuencia_cardiaca
-          ? String(data.frecuencia_cardiaca)
-          : "",
-        frecuencia_respiratoria: data.frecuencia_respiratoria
-          ? String(data.frecuencia_respiratoria)
-          : "",
+        frecuencia_cardiaca: data.frecuencia_cardiaca ? String(data.frecuencia_cardiaca) : "",
+        frecuencia_respiratoria: data.frecuencia_respiratoria ? String(data.frecuencia_respiratoria) : "",
         diagnostico: data.diagnostico || "",
         tratamiento: data.tratamiento || "",
         indicaciones: data.indicaciones || "",
         observaciones: data.observaciones || "",
       });
-    } catch (error) {
-      console.log(error);
+    } catch {
       toast.error("Error cargando ficha");
     } finally {
       setLoading(false);
@@ -120,25 +101,16 @@ export default function EditarFichaPage() {
 
     try {
       setGuardando(true);
-
-      const res = await fetch(`${apiUrl}/fichas/${fichaId}/`, {
+      const res = await apiFetch(`/fichas/${fichaId}/`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
-        },
         body: JSON.stringify({
           paciente: Number(form.paciente),
           motivo_consulta: form.motivo_consulta,
           anamnesis: form.anamnesis || null,
           peso_kg: form.peso_kg || null,
           temperatura: form.temperatura || null,
-          frecuencia_cardiaca: form.frecuencia_cardiaca
-            ? Number(form.frecuencia_cardiaca)
-            : null,
-          frecuencia_respiratoria: form.frecuencia_respiratoria
-            ? Number(form.frecuencia_respiratoria)
-            : null,
+          frecuencia_cardiaca: form.frecuencia_cardiaca ? Number(form.frecuencia_cardiaca) : null,
+          frecuencia_respiratoria: form.frecuencia_respiratoria ? Number(form.frecuencia_respiratoria) : null,
           diagnostico: form.diagnostico || null,
           tratamiento: form.tratamiento || null,
           indicaciones: form.indicaciones || null,
@@ -146,17 +118,11 @@ export default function EditarFichaPage() {
         }),
       });
 
-      if (!res.ok) {
-        const error = await res.json();
-        console.log(error);
-        toast.error("No se pudo actualizar la ficha");
-        return;
-      }
+      if (!res.ok) { toast.error("No se pudo actualizar la ficha"); return; }
 
       toast.success("Ficha clínica actualizada");
       router.push(`/fichas/${fichaId}`);
-    } catch (error) {
-      console.log(error);
+    } catch {
       toast.error("Error actualizando ficha");
     } finally {
       setGuardando(false);
@@ -167,7 +133,10 @@ export default function EditarFichaPage() {
     return (
       <main className="min-h-screen bg-slate-100 p-8">
         <div className="card mx-auto max-w-4xl">
-          <p className="text-muted">Cargando ficha...</p>
+          <div className="skeleton h-5 w-32 mb-4" />
+          <div className="space-y-3">
+            {[1, 2, 3, 4].map((i) => <div key={i} className="skeleton h-10 rounded-lg" />)}
+          </div>
         </div>
       </main>
     );
@@ -177,20 +146,15 @@ export default function EditarFichaPage() {
     <main className="min-h-screen bg-slate-100 p-8">
       <div className="mx-auto max-w-5xl space-y-6">
         <div>
-          <h1 className="title">Editar ficha clínica</h1>
-          <p className="text-muted">
-            Actualiza la información médica registrada.
-          </p>
+          <BackButton href={`/fichas/${fichaId}`} label="Volver a la ficha" />
+          <h1 className="title mt-2">Editar ficha clínica</h1>
+          <p className="text-muted">Actualiza la información médica registrada.</p>
         </div>
 
         <section className="card">
           <h2 className="subtitle mb-4">Paciente</h2>
-
-          <select
-            className="input w-full"
-            value={form.paciente}
-            onChange={(e) => setForm({ ...form, paciente: e.target.value })}
-          >
+          <select className="input w-full" value={form.paciente}
+            onChange={(e) => setForm({ ...form, paciente: e.target.value })}>
             <option value="">Seleccionar paciente *</option>
             {pacientes.map((p) => (
               <option key={p.id} value={p.id}>
@@ -199,118 +163,75 @@ export default function EditarFichaPage() {
               </option>
             ))}
           </select>
+          {pacienteSeleccionado && (
+            <p className="text-sm text-slate-500 mt-1">
+              {pacienteSeleccionado.especie_nombre} · Tutor: {pacienteSeleccionado.tutor_nombre}
+            </p>
+          )}
         </section>
 
         <section className="card">
           <h2 className="subtitle mb-4">Consulta</h2>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <input
-              className="input md:col-span-2"
-              placeholder="Motivo de consulta *"
+            <input className="input md:col-span-2" placeholder="Motivo de consulta *"
               value={form.motivo_consulta}
-              onChange={(e) =>
-                setForm({ ...form, motivo_consulta: e.target.value })
-              }
-            />
+              onChange={(e) => setForm({ ...form, motivo_consulta: e.target.value })} />
 
-            <textarea
-              className="input md:col-span-2"
-              placeholder="Anamnesis"
+            <textarea className="input md:col-span-2" placeholder="Anamnesis" rows={3}
               value={form.anamnesis}
-              onChange={(e) => setForm({ ...form, anamnesis: e.target.value })}
-            />
+              onChange={(e) => setForm({ ...form, anamnesis: e.target.value })} />
 
-            <input
-              className="input"
-              type="number"
-              step="0.01"
-              placeholder="Peso kg"
-              value={form.peso_kg}
-              onChange={(e) => setForm({ ...form, peso_kg: e.target.value })}
-            />
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Peso (kg)</label>
+              <input className="input" type="number" step="0.01" placeholder="Ej: 4.5"
+                value={form.peso_kg}
+                onChange={(e) => setForm({ ...form, peso_kg: e.target.value })} />
+            </div>
 
-            <input
-              className="input"
-              type="number"
-              step="0.01"
-              placeholder="Temperatura °C"
-              value={form.temperatura}
-              onChange={(e) =>
-                setForm({ ...form, temperatura: e.target.value })
-              }
-            />
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Temperatura (°C)</label>
+              <input className="input" type="number" step="0.1" placeholder="Ej: 38.5"
+                value={form.temperatura}
+                onChange={(e) => setForm({ ...form, temperatura: e.target.value })} />
+            </div>
 
-            <input
-              className="input"
-              type="number"
-              placeholder="Frecuencia cardíaca"
-              value={form.frecuencia_cardiaca}
-              onChange={(e) =>
-                setForm({ ...form, frecuencia_cardiaca: e.target.value })
-              }
-            />
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Frecuencia cardíaca</label>
+              <input className="input" type="number" placeholder="lpm"
+                value={form.frecuencia_cardiaca}
+                onChange={(e) => setForm({ ...form, frecuencia_cardiaca: e.target.value })} />
+            </div>
 
-            <input
-              className="input"
-              type="number"
-              placeholder="Frecuencia respiratoria"
-              value={form.frecuencia_respiratoria}
-              onChange={(e) =>
-                setForm({ ...form, frecuencia_respiratoria: e.target.value })
-              }
-            />
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Frecuencia respiratoria</label>
+              <input className="input" type="number" placeholder="rpm"
+                value={form.frecuencia_respiratoria}
+                onChange={(e) => setForm({ ...form, frecuencia_respiratoria: e.target.value })} />
+            </div>
 
-            <textarea
-              className="input md:col-span-2"
-              placeholder="Diagnóstico"
+            <textarea className="input md:col-span-2" placeholder="Diagnóstico" rows={3}
               value={form.diagnostico}
-              onChange={(e) =>
-                setForm({ ...form, diagnostico: e.target.value })
-              }
-            />
+              onChange={(e) => setForm({ ...form, diagnostico: e.target.value })} />
 
-            <textarea
-              className="input md:col-span-2"
-              placeholder="Tratamiento"
+            <textarea className="input md:col-span-2" placeholder="Tratamiento" rows={3}
               value={form.tratamiento}
-              onChange={(e) =>
-                setForm({ ...form, tratamiento: e.target.value })
-              }
-            />
+              onChange={(e) => setForm({ ...form, tratamiento: e.target.value })} />
 
-            <textarea
-              className="input md:col-span-2"
-              placeholder="Indicaciones"
+            <textarea className="input md:col-span-2" placeholder="Indicaciones" rows={2}
               value={form.indicaciones}
-              onChange={(e) =>
-                setForm({ ...form, indicaciones: e.target.value })
-              }
-            />
+              onChange={(e) => setForm({ ...form, indicaciones: e.target.value })} />
 
-            <textarea
-              className="input md:col-span-2"
-              placeholder="Observaciones"
+            <textarea className="input md:col-span-2" placeholder="Observaciones" rows={2}
               value={form.observaciones}
-              onChange={(e) =>
-                setForm({ ...form, observaciones: e.target.value })
-              }
-            />
+              onChange={(e) => setForm({ ...form, observaciones: e.target.value })} />
           </div>
 
           <div className="mt-5 flex gap-2">
-            <button
-              onClick={guardarCambios}
-              disabled={guardando}
-              className="btn-primary disabled:opacity-60"
-            >
+            <button onClick={guardarCambios} disabled={guardando} className="btn-primary">
               {guardando ? "Guardando..." : "Guardar cambios"}
             </button>
-
-            <button
-              onClick={() => router.push(`/fichas/${fichaId}`)}
-              className="rounded-lg border px-4 py-2 text-sm"
-            >
+            <button onClick={() => router.push(`/fichas/${fichaId}`)} className="btn-secondary">
               Cancelar
             </button>
           </div>
