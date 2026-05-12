@@ -12,22 +12,33 @@ import { formatFechaHora, formatEdad } from "@/lib/utils";
 
 // Hook personalizado para actualizar la edad automáticamente
 function useEdadActualizada(fechaNacimiento: string | null | undefined) {
-  const [edad, setEdad] = useState(() => formatEdad(fechaNacimiento));
+  const [edad, setEdad] = useState(() => {
+    const edadCalculada = formatEdad(fechaNacimiento);
+    console.log('🎂 [INICIAL] Fecha:', fechaNacimiento, '→ Edad:', edadCalculada);
+    return edadCalculada;
+  });
 
   useEffect(() => {
-    // Debug: verificar qué fecha está llegando
-    console.log('📅 Fecha de nacimiento recibida:', fechaNacimiento);
-    console.log('🎂 Edad calculada:', formatEdad(fechaNacimiento));
+    console.log('📅 [EFECTO] Fecha de nacimiento recibida:', fechaNacimiento);
+    console.log('📅 [EFECTO] Tipo:', typeof fechaNacimiento);
+    
+    const edadCalculada = formatEdad(fechaNacimiento);
+    console.log('🎂 [EFECTO] Edad calculada:', edadCalculada);
     
     // Actualizar la edad inmediatamente
-    setEdad(formatEdad(fechaNacimiento));
+    setEdad(edadCalculada);
 
     // Actualizar cada minuto (60000 ms)
     const intervalo = setInterval(() => {
-      setEdad(formatEdad(fechaNacimiento));
+      const nuevaEdad = formatEdad(fechaNacimiento);
+      console.log('⏰ [INTERVALO] Actualizando edad:', nuevaEdad);
+      setEdad(nuevaEdad);
     }, 60000);
 
-    return () => clearInterval(intervalo);
+    return () => {
+      console.log('🧹 [CLEANUP] Limpiando intervalo');
+      clearInterval(intervalo);
+    };
   }, [fechaNacimiento]);
 
   return edad;
