@@ -104,7 +104,10 @@ function PacienteFormFields({
         {sexos.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
       </select>
 
-      <input className="input" type="date" value={form.fecha_nacimiento} onChange={set("fecha_nacimiento")} />
+      <label className="flex flex-col gap-1 text-sm text-slate-700">
+        Fecha de nacimiento
+        <input className="input" type="date" value={form.fecha_nacimiento} onChange={set("fecha_nacimiento")} />
+      </label>
 
       <input className="input" placeholder="Color" value={form.color} onChange={set("color")} />
 

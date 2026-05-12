@@ -10,38 +10,18 @@ import PageSkeleton from "@/app/components/PageSkeleton";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import { formatFechaHora, formatEdad } from "@/lib/utils";
 
-// Hook personalizado para actualizar la edad automáticamente
+// Hook personalizado para actualizar la edad automáticamente cada minuto
 function useEdadActualizada(fechaNacimiento: string | null | undefined) {
-  const [edad, setEdad] = useState(() => {
-    const edadCalculada = formatEdad(fechaNacimiento);
-    console.log('🎂 [INICIAL] Fecha:', fechaNacimiento, '→ Edad:', edadCalculada);
-    return edadCalculada;
-  });
+  const [, setTick] = useState(0);
 
   useEffect(() => {
-    console.log('📅 [EFECTO] Fecha de nacimiento recibida:', fechaNacimiento);
-    console.log('📅 [EFECTO] Tipo:', typeof fechaNacimiento);
-    
-    const edadCalculada = formatEdad(fechaNacimiento);
-    console.log('🎂 [EFECTO] Edad calculada:', edadCalculada);
-    
-    // Actualizar la edad inmediatamente
-    setEdad(edadCalculada);
-
-    // Actualizar cada minuto (60000 ms)
-    const intervalo = setInterval(() => {
-      const nuevaEdad = formatEdad(fechaNacimiento);
-      console.log('⏰ [INTERVALO] Actualizando edad:', nuevaEdad);
-      setEdad(nuevaEdad);
-    }, 60000);
-
-    return () => {
-      console.log('🧹 [CLEANUP] Limpiando intervalo');
-      clearInterval(intervalo);
-    };
+    if (!fechaNacimiento) return;
+    // Re-renderizar cada minuto para mantener la edad actualizada
+    const intervalo = setInterval(() => setTick((t) => t + 1), 60000);
+    return () => clearInterval(intervalo);
   }, [fechaNacimiento]);
 
-  return edad;
+  return formatEdad(fechaNacimiento);
 }
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
