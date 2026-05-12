@@ -57,9 +57,10 @@ export default function EditarFichaPage() {
   );
 
   const cargarPacientes = async () => {
-    const res = await apiFetch("/pacientes/");
+    const res = await apiFetch("/pacientes/?page_size=200");
     if (!res.ok) return;
-    setPacientes(await res.json());
+    const d = await res.json();
+    setPacientes(d.results ?? d);
   };
 
   const cargarFicha = async () => {

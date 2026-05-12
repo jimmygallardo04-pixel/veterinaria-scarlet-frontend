@@ -114,7 +114,7 @@ export default function DetalleFichaPage() {
   const cargarTiposArchivo = async () => {
     try {
       const res = await apiFetch("/tipos-archivo/");
-      if (res.ok) setTiposArchivo(await res.json());
+      if (res.ok) { const d = await res.json(); setTiposArchivo(d.results ?? d); }
     } catch { /* silencioso */ }
   };
 

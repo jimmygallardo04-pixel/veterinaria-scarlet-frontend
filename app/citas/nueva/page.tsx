@@ -32,8 +32,8 @@ export default function NuevaCitaPage() {
   });
 
   useEffect(() => {
-    apiFetch("/pacientes/").then(async (res) => {
-      if (res.ok) setPacientes(await res.json());
+    apiFetch("/pacientes/?page_size=200").then(async (res) => {
+      if (res.ok) { const d = await res.json(); setPacientes(d.results ?? d); }
     });
   }, []);
 

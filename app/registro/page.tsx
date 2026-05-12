@@ -153,7 +153,18 @@ export default function RegistroPage() {
         const newErrors: typeof datosErrors = {};
         if (errorData.email) newErrors.email = Array.isArray(errorData.email) ? errorData.email[0] : errorData.email;
         if (errorData.password) newErrors.password = Array.isArray(errorData.password) ? errorData.password[0] : errorData.password;
-        if (Object.keys(newErrors).length > 0) { setDatosErrors(newErrors); return; }
+        if (Object.keys(newErrors).length > 0) {
+          // Si el email ya está registrado, ofrecer ir al login directamente
+          if (newErrors.email?.toLowerCase().includes("ya está en uso")) {
+            toast.error("Este correo ya tiene una cuenta. Inicia sesión.", {
+              action: { label: "Ir al login", onClick: () => router.push("/login") },
+              duration: 6000,
+            });
+            return;
+          }
+          setDatosErrors(newErrors);
+          return;
+        }
         toast.error(errorData.detail || "Error al registrar. Verifica los datos.");
         return;
       }

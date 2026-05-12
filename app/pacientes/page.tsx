@@ -173,8 +173,14 @@ export default function PacientesPage() {
         const data: PaginatedResponse<Opcion> = await resTutores.json();
         setTutores(data.results);
       }
-      if (resEspecies.ok) setEspecies(await resEspecies.json());
-      if (resSexos.ok) setSexos(await resSexos.json());
+      if (resEspecies.ok) {
+        const data = await resEspecies.json();
+        setEspecies(data.results ?? data);
+      }
+      if (resSexos.ok) {
+        const data = await resSexos.json();
+        setSexos(data.results ?? data);
+      }
     };
     cargarCatalogos();
   }, []);

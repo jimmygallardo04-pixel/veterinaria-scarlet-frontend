@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AuthGuard from "./components/AuthGuard";
 import { Toaster } from "sonner";
+import { APP_NAME } from "@/lib/constants";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Veterinaria Scarlet",
+  title: APP_NAME,
   description: "Sistema de gestión veterinaria",
 };
 

@@ -128,17 +128,17 @@ export default function DetallePacientePage() {
     try {
       const [resPaciente, resVacunas, resFichas, resCitas, resTratamientos] = await Promise.all([
         apiFetch(`/pacientes/${pacienteId}/`),
-        apiFetch(`/vacunas/?paciente=${pacienteId}`),
-        apiFetch(`/fichas/?paciente=${pacienteId}`),
-        apiFetch(`/citas/?paciente=${pacienteId}`),
-        apiFetch(`/tratamientos/?paciente=${pacienteId}`),
+        apiFetch(`/vacunas/?paciente=${pacienteId}&page_size=200`),
+        apiFetch(`/fichas/?paciente=${pacienteId}&page_size=200`),
+        apiFetch(`/citas/?paciente=${pacienteId}&page_size=200`),
+        apiFetch(`/tratamientos/?paciente=${pacienteId}&page_size=200`),
       ]);
 
       if (resPaciente.ok) setPaciente(await resPaciente.json());
-      if (resVacunas.ok) setVacunas(await resVacunas.json());
-      if (resFichas.ok) setFichas(await resFichas.json());
-      if (resCitas.ok) setCitas(await resCitas.json());
-      if (resTratamientos.ok) setTratamientos(await resTratamientos.json());
+      if (resVacunas.ok) { const d = await resVacunas.json(); setVacunas(d.results ?? d); }
+      if (resFichas.ok) { const d = await resFichas.json(); setFichas(d.results ?? d); }
+      if (resCitas.ok) { const d = await resCitas.json(); setCitas(d.results ?? d); }
+      if (resTratamientos.ok) { const d = await resTratamientos.json(); setTratamientos(d.results ?? d); }
     } catch {
       toast.error("Error cargando datos del paciente");
     } finally {
@@ -170,8 +170,8 @@ export default function DetallePacientePage() {
       if (!res.ok) { toast.error("No se pudo registrar la vacuna"); return; }
       toast.success("Vacuna registrada");
       setVacunaForm(vacunaFormInicial);
-      const r = await apiFetch(`/vacunas/?paciente=${pacienteId}`);
-      if (r.ok) setVacunas(await r.json());
+      const r = await apiFetch(`/vacunas/?paciente=${pacienteId}&page_size=200`);
+      if (r.ok) { const d = await r.json(); setVacunas(d.results ?? d); }
     } catch {
       toast.error("Error de conexión");
     } finally {
@@ -218,8 +218,8 @@ export default function DetallePacientePage() {
       if (!res.ok) { toast.error("No se pudo editar la vacuna"); return; }
       toast.success("Vacuna actualizada");
       setVacunaEditando(null);
-      const r = await apiFetch(`/vacunas/?paciente=${pacienteId}`);
-      if (r.ok) setVacunas(await r.json());
+      const r = await apiFetch(`/vacunas/?paciente=${pacienteId}&page_size=200`);
+      if (r.ok) { const d = await r.json(); setVacunas(d.results ?? d); }
     } catch {
       toast.error("Error de conexión");
     }
@@ -255,8 +255,8 @@ export default function DetallePacientePage() {
       if (!res.ok) { toast.error("No se pudo editar el tratamiento"); return; }
       toast.success("Tratamiento actualizado");
       setTratamientoEditando(null);
-      const r = await apiFetch(`/tratamientos/?paciente=${pacienteId}`);
-      if (r.ok) setTratamientos(await r.json());
+      const r = await apiFetch(`/tratamientos/?paciente=${pacienteId}&page_size=200`);
+      if (r.ok) { const d = await r.json(); setTratamientos(d.results ?? d); }
     } catch {
       toast.error("Error de conexión");
     }
