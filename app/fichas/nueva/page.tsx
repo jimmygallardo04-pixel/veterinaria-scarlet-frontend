@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import BackButton from "@/app/components/BackButton";
+import { formatEdad } from "@/lib/utils";
 
 type Paciente = {
   id: number;
@@ -12,7 +13,7 @@ type Paciente = {
   tutor_nombre: string;
   especie_nombre?: string;
   raza?: string | null;
-  edad?: number | null;
+  fecha_nacimiento?: string | null;
   color?: string | null;
   esterilizado?: boolean;
 };
@@ -198,7 +199,7 @@ export default function NuevaFichaPage() {
             <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm md:grid-cols-4">
               <div><p className="text-muted text-xs">Especie</p><p className="font-medium">{pacienteSeleccionado.especie_nombre ?? "-"}</p></div>
               <div><p className="text-muted text-xs">Raza</p><p className="font-medium">{pacienteSeleccionado.raza ?? "-"}</p></div>
-              <div><p className="text-muted text-xs">Edad</p><p className="font-medium">{pacienteSeleccionado.edad != null ? `${pacienteSeleccionado.edad} años` : "-"}</p></div>
+              <div><p className="text-muted text-xs">Edad</p><p className="font-medium">{formatEdad(pacienteSeleccionado.fecha_nacimiento)}</p></div>
               <div><p className="text-muted text-xs">Esterilizado</p><p className="font-medium">{pacienteSeleccionado.esterilizado ? "Sí" : "No"}</p></div>
             </div>
           )}

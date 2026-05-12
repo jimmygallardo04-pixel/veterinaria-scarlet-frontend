@@ -10,6 +10,20 @@ import PageSkeleton from "@/app/components/PageSkeleton";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import { formatFechaHora, formatEdad } from "@/lib/utils";
 
+// Hook personalizado para actualizar la edad automáticamente cada minuto
+function useEdadActualizada(fechaNacimiento: string | null | undefined) {
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!fechaNacimiento) return;
+    // Re-renderizar cada minuto para mantener la edad actualizada
+    const intervalo = setInterval(() => setTick((t) => t + 1), 60000);
+    return () => clearInterval(intervalo);
+  }, [fechaNacimiento]);
+
+  return formatEdad(fechaNacimiento);
+}
+
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
 type Paciente = {
@@ -19,7 +33,7 @@ type Paciente = {
   sexo_nombre?: string;
   raza?: string | null;
   color?: string | null;
-  edad?: number | null;
+  fecha_nacimiento?: string | null;
   esterilizado: boolean;
   observaciones?: string | null;
   tutor_nombre: string;
@@ -89,6 +103,9 @@ export default function DetallePacientePage() {
   const [tab, setTab] = useState<Tab>("vacunas");
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
+
+  // Edad que se actualiza automáticamente cada minuto
+  const edadActualizada = useEdadActualizada(paciente?.fecha_nacimiento);
 
   // Formulario vacuna (crear)
   const vacunaFormInicial = { nombre_vacuna: "", fecha_aplicacion: "", proxima_dosis: "", observaciones: "" };
@@ -306,7 +323,7 @@ export default function DetallePacientePage() {
                 {paciente.especie_nombre ?? "Sin especie"}
                 {paciente.raza ? ` · ${paciente.raza}` : ""}
                 {paciente.sexo_nombre ? ` · ${paciente.sexo_nombre}` : ""}
-                {paciente.edad != null ? ` · ${formatEdad(paciente.edad)}` : ""}
+                {paciente.fecha_nacimiento ? ` · ${edadActualizada}` : ""}
                 {" · Tutor: "}{paciente.tutor_nombre}
               </p>
             )}
@@ -324,7 +341,7 @@ export default function DetallePacientePage() {
               <div><p className="text-muted text-xs">Especie</p><p className="font-medium">{paciente.especie_nombre ?? "-"}</p></div>
               <div><p className="text-muted text-xs">Raza</p><p className="font-medium">{paciente.raza ?? "-"}</p></div>
               <div><p className="text-muted text-xs">Sexo</p><p className="font-medium">{paciente.sexo_nombre ?? "-"}</p></div>
-              <div><p className="text-muted text-xs">Edad</p><p className="font-medium">{formatEdad(paciente.edad)}</p></div>
+              <div><p className="text-muted text-xs">Edad</p><p className="font-medium">{edadActualizada}</p></div>
               <div><p className="text-muted text-xs">Color</p><p className="font-medium">{paciente.color ?? "-"}</p></div>
               <div><p className="text-muted text-xs">Esterilizado</p><p className="font-medium">{paciente.esterilizado ? "Sí" : "No"}</p></div>
               <div><p className="text-muted text-xs">Tutor</p><p className="font-medium">{paciente.tutor_nombre}</p></div>
