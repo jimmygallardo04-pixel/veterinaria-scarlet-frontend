@@ -34,8 +34,8 @@ export default function NuevoArchivoPage() {
 
   useEffect(() => {
     Promise.all([
-      apiFetch("/pacientes/").then(async (r) => { if (r.ok) setPacientes(await r.json()); }),
-      apiFetch("/tipos-archivo/").then(async (r) => { if (r.ok) setTiposArchivo(await r.json()); }),
+      apiFetch("/pacientes/?page_size=200").then(async (r) => { if (r.ok) { const d = await r.json(); setPacientes(d.results ?? d); } }),
+      apiFetch("/tipos-archivo/").then(async (r) => { if (r.ok) { const d = await r.json(); setTiposArchivo(d.results ?? d); } }),
     ]);
   }, []);
 

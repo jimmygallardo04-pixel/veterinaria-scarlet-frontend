@@ -120,10 +120,11 @@ export default function CalendarioCitasPage() {
   };
 
   const cargarCitas = async () => {
-    const res = await apiFetch("/citas/");
+    const res = await apiFetch("/citas/?page_size=500");
     if (!res.ok) { toast.error("Error cargando citas"); return; }
 
-    const data: Cita[] = await res.json();
+    const json = await res.json();
+    const data: Cita[] = json.results ?? json;
     setEvents(data.map((cita) => {
       const inicio = new Date(cita.fecha_hora);
       const fin = new Date(inicio.getTime() + 30 * 60000);
@@ -132,9 +133,10 @@ export default function CalendarioCitasPage() {
   };
 
   const cargarPacientes = async () => {
-    const res = await apiFetch("/pacientes/");
+    const res = await apiFetch("/pacientes/?page_size=200");
     if (!res.ok) { toast.error("Error cargando pacientes"); return; }
-    setPacientes(await res.json());
+    const d = await res.json();
+    setPacientes(d.results ?? d);
   };
 
   const cargarDatos = async () => {

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiFetch, type PaginatedResponse } from "@/lib/api";
 import { useUser } from "@/lib/useUser";
 import { clearSession } from "@/lib/session";
+import { APP_NAME, APP_EMOJI, SEARCH_SUGGESTIONS_LIMIT, SEARCH_DEBOUNCE_MS } from "@/lib/constants";
 
 const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
@@ -73,7 +74,7 @@ export default function Navbar() {
   const [abierto, setAbierto] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  // Debounce: call backend 300ms after the user stops typing
+  // Debounce: call backend after the user stops typing
   useEffect(() => {
     if (query.length < 2) {
       setSugerencias([]);
@@ -86,7 +87,7 @@ export default function Navbar() {
       setAbierto(true);
       try {
         const res = await apiFetch(
-          `/pacientes/?search=${encodeURIComponent(query)}&page_size=8`
+          `/pacientes/?search=${encodeURIComponent(query)}&page_size=${SEARCH_SUGGESTIONS_LIMIT}`
         );
         if (res.ok) {
           const data: PaginatedResponse<PacienteSugerencia> = await res.json();
@@ -98,7 +99,7 @@ export default function Navbar() {
       } finally {
         setBuscando(false);
       }
-    }, 300);
+    }, SEARCH_DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
   }, [query]);
@@ -168,7 +169,7 @@ export default function Navbar() {
 
         {/* Logo */}
         <Link href="/dashboard" className="font-bold text-green-700 text-base shrink-0">
-          🐾 Veterinaria Scarlet
+          {APP_EMOJI} {APP_NAME}
         </Link>
 
         {/* Nav links — desktop only */}

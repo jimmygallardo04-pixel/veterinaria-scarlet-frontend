@@ -5,6 +5,7 @@ import Link from "next/link";
 import { apiFetch, type PaginatedResponse } from "@/lib/api";
 import { formatFechaHora } from "@/lib/utils";
 import type { Cita, Resumen } from "@/lib/types";
+import { DASHBOARD_CITAS_LIMIT, DASHBOARD_CITAS_PAGE_SIZE } from "@/lib/constants";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
