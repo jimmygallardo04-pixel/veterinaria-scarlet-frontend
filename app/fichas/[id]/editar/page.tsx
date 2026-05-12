@@ -15,6 +15,7 @@ type Paciente = {
 
 type FichaForm = {
   paciente: string;
+  fecha: string;
   motivo_consulta: string;
   anamnesis: string;
   peso_kg: string;
@@ -29,6 +30,7 @@ type FichaForm = {
 
 const formInicial: FichaForm = {
   paciente: "",
+  fecha: "",
   motivo_consulta: "",
   anamnesis: "",
   peso_kg: "",
@@ -70,8 +72,19 @@ export default function EditarFichaPage() {
       if (!res.ok) { toast.error("No se pudo cargar la ficha"); return; }
 
       const data = await res.json();
+      
+      // Convertir fecha UTC del backend a formato datetime-local
+      let fechaLocal = "";
+      if (data.fecha) {
+        const fechaUTC = new Date(data.fecha);
+        const offsetMs = fechaUTC.getTimezoneOffset() * 60000;
+        const fechaLocalDate = new Date(fechaUTC.getTime() - offsetMs);
+        fechaLocal = fechaLocalDate.toISOString().slice(0, 16);
+      }
+
       setForm({
         paciente: String(data.paciente?.id ?? data.paciente ?? ""),
+        fecha: fechaLocal,
         motivo_consulta: data.motivo_consulta || "",
         anamnesis: data.anamnesis || "",
         peso_kg: data.peso_kg || "",
@@ -102,10 +115,15 @@ export default function EditarFichaPage() {
 
     try {
       setGuardando(true);
+      
+      // Convertir fecha local a ISO 8601 UTC para el backend
+      const fechaISO = form.fecha ? new Date(form.fecha).toISOString() : null;
+
       const res = await apiFetch(`/fichas/${fichaId}/`, {
         method: "PATCH",
         body: JSON.stringify({
           paciente: Number(form.paciente),
+          fecha: fechaISO,
           motivo_consulta: form.motivo_consulta,
           anamnesis: form.anamnesis || null,
           peso_kg: form.peso_kg || null,
@@ -175,6 +193,16 @@ export default function EditarFichaPage() {
           <h2 className="subtitle mb-4">Consulta</h2>
 
           <div className="grid gap-3 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <label className="block text-xs text-slate-500 mb-1">Fecha y hora de consulta *</label>
+              <input
+                className="input"
+                type="datetime-local"
+                value={form.fecha}
+                onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+              />
+            </div>
+
             <input className="input md:col-span-2" placeholder="Motivo de consulta *"
               value={form.motivo_consulta}
               onChange={(e) => setForm({ ...form, motivo_consulta: e.target.value })} />
