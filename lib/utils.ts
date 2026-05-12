@@ -57,19 +57,15 @@ export function calcularEdad(fechaNacimiento: string | Date | null | undefined):
   let años = hoy.getFullYear() - nacimiento.getFullYear();
   let meses = hoy.getMonth() - nacimiento.getMonth();
   
-  // Ajustar si aún no ha cumplido años este año
-  if (meses < 0 || (meses === 0 && hoy.getDate() < nacimiento.getDate())) {
-    años--;
-    meses += 12;
-  }
-  
   // Ajustar meses si el día actual es menor que el día de nacimiento
   if (hoy.getDate() < nacimiento.getDate()) {
     meses--;
-    if (meses < 0) {
-      meses = 11;
-      años--;
-    }
+  }
+  
+  // Si los meses son negativos, restar un año y sumar 12 meses
+  if (meses < 0) {
+    años--;
+    meses += 12;
   }
   
   return { años: Math.max(0, años), meses: Math.max(0, meses) };
