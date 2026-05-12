@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/api";
 import BackButton from "@/app/components/BackButton";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
-import { formatFechaHora } from "@/lib/utils";
+import { formatFechaHora, formatEdad } from "@/lib/utils";
 import { exportarFichaPDF } from "@/lib/pdfExporter";
 
 const BUCKET_NAME = "documentos-veterinaria-scarlet";
@@ -17,6 +17,7 @@ type Paciente = {
   id: number;
   nombre: string;
   raza?: string | null;
+  fecha_nacimiento?: string | null;
   edad?: number | null;
   color?: string | null;
   esterilizado?: boolean;
@@ -65,6 +66,7 @@ type FichaDetalle = {
   tutor_nombre: string;
   especie_nombre: string;
   sexo_nombre: string;
+  fecha_nacimiento?: string | null;
   edad?: number | null;
   fecha: string;
   motivo_consulta: string;
@@ -310,7 +312,7 @@ export default function DetalleFichaPage() {
             <p><strong>Especie:</strong> {ficha.especie_nombre || "-"}</p>
             <p><strong>Raza:</strong> {ficha.paciente.raza || "-"}</p>
             <p><strong>Sexo:</strong> {ficha.sexo_nombre || "-"}</p>
-            <p><strong>Edad:</strong> {ficha.edad != null ? `${ficha.edad} años` : "-"}</p>
+            <p><strong>Edad:</strong> {formatEdad(ficha.fecha_nacimiento || ficha.paciente.fecha_nacimiento)}</p>
             <p><strong>Color:</strong> {ficha.paciente.color || "-"}</p>
             <p><strong>Esterilizado:</strong> {ficha.paciente.esterilizado ? "Sí" : "No"}</p>
           </div>

@@ -11,6 +11,7 @@ import type { Paciente, Opcion } from "@/lib/types";
 import PageSkeleton from "@/app/components/PageSkeleton";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import Pagination from "@/app/components/Pagination";
+import { formatEdad } from "@/lib/utils";
 
 // ─── Tipos de formulario (locales — no son entidades del dominio) ─────────────
 
@@ -353,7 +354,7 @@ export default function PacientesPage() {
                         {p.especie_nombre || "Sin especie"}
                         {p.raza ? ` · ${p.raza}` : ""}
                         {p.sexo_nombre ? ` · ${p.sexo_nombre}` : ""}
-                        {p.edad ? ` · ${p.edad} años` : ""}
+                        {p.fecha_nacimiento ? ` · ${formatEdad(p.fecha_nacimiento)}` : ""}
                         {p.color ? ` · ${p.color}` : ""}
                         {" · Tutor: "}{p.tutor_nombre}
                       </div>

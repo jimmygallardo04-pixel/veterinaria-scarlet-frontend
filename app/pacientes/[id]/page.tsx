@@ -19,6 +19,7 @@ type Paciente = {
   sexo_nombre?: string;
   raza?: string | null;
   color?: string | null;
+  fecha_nacimiento?: string | null;
   edad?: number | null;
   esterilizado: boolean;
   observaciones?: string | null;
@@ -306,7 +307,7 @@ export default function DetallePacientePage() {
                 {paciente.especie_nombre ?? "Sin especie"}
                 {paciente.raza ? ` · ${paciente.raza}` : ""}
                 {paciente.sexo_nombre ? ` · ${paciente.sexo_nombre}` : ""}
-                {paciente.edad != null ? ` · ${formatEdad(paciente.edad)}` : ""}
+                {paciente.fecha_nacimiento ? ` · ${formatEdad(paciente.fecha_nacimiento)}` : ""}
                 {" · Tutor: "}{paciente.tutor_nombre}
               </p>
             )}
@@ -324,7 +325,7 @@ export default function DetallePacientePage() {
               <div><p className="text-muted text-xs">Especie</p><p className="font-medium">{paciente.especie_nombre ?? "-"}</p></div>
               <div><p className="text-muted text-xs">Raza</p><p className="font-medium">{paciente.raza ?? "-"}</p></div>
               <div><p className="text-muted text-xs">Sexo</p><p className="font-medium">{paciente.sexo_nombre ?? "-"}</p></div>
-              <div><p className="text-muted text-xs">Edad</p><p className="font-medium">{formatEdad(paciente.edad)}</p></div>
+              <div><p className="text-muted text-xs">Edad</p><p className="font-medium">{formatEdad(paciente.fecha_nacimiento)}</p></div>
               <div><p className="text-muted text-xs">Color</p><p className="font-medium">{paciente.color ?? "-"}</p></div>
               <div><p className="text-muted text-xs">Esterilizado</p><p className="font-medium">{paciente.esterilizado ? "Sí" : "No"}</p></div>
               <div><p className="text-muted text-xs">Tutor</p><p className="font-medium">{paciente.tutor_nombre}</p></div>
