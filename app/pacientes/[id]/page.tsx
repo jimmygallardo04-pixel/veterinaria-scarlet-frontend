@@ -20,7 +20,6 @@ type Paciente = {
   raza?: string | null;
   color?: string | null;
   fecha_nacimiento?: string | null;
-  edad?: number | null;
   esterilizado: boolean;
   observaciones?: string | null;
   tutor_nombre: string;

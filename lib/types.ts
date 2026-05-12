@@ -35,7 +35,6 @@ export type Paciente = {
   sexo_nombre?: string | null;
   raza?: string | null;
   fecha_nacimiento?: string | null;
-  edad?: number | null;
   color?: string | null;
   esterilizado: boolean;
   observaciones?: string | null;

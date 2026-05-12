@@ -14,7 +14,6 @@ type Paciente = {
   especie_nombre?: string;
   raza?: string | null;
   fecha_nacimiento?: string | null;
-  edad?: number | null;
   color?: string | null;
   esterilizado?: boolean;
 };

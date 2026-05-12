@@ -18,7 +18,6 @@ type Paciente = {
   nombre: string;
   raza?: string | null;
   fecha_nacimiento?: string | null;
-  edad?: number | null;
   color?: string | null;
   esterilizado?: boolean;
 };
@@ -67,7 +66,6 @@ type FichaDetalle = {
   especie_nombre: string;
   sexo_nombre: string;
   fecha_nacimiento?: string | null;
-  edad?: number | null;
   fecha: string;
   motivo_consulta: string;
   anamnesis?: string | null;
