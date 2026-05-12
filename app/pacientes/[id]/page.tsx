@@ -15,6 +15,10 @@ function useEdadActualizada(fechaNacimiento: string | null | undefined) {
   const [edad, setEdad] = useState(() => formatEdad(fechaNacimiento));
 
   useEffect(() => {
+    // Debug: verificar qué fecha está llegando
+    console.log('📅 Fecha de nacimiento recibida:', fechaNacimiento);
+    console.log('🎂 Edad calculada:', formatEdad(fechaNacimiento));
+    
     // Actualizar la edad inmediatamente
     setEdad(formatEdad(fechaNacimiento));
 
