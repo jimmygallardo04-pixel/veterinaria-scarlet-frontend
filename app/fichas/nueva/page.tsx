@@ -19,6 +19,7 @@ type Paciente = {
 
 type FichaForm = {
   paciente: string;
+  fecha: string;
   motivo_consulta: string;
   anamnesis: string;
   peso_kg: string;
@@ -31,8 +32,19 @@ type FichaForm = {
   observaciones: string;
 };
 
+// Función auxiliar para obtener fecha/hora actual en formato datetime-local
+const obtenerFechaHoraLocal = () => {
+  const ahora = new Date();
+  // Restar offset de timezone para obtener hora local
+  const offsetMs = ahora.getTimezoneOffset() * 60000;
+  const fechaLocal = new Date(ahora.getTime() - offsetMs);
+  // Formato: YYYY-MM-DDTHH:mm
+  return fechaLocal.toISOString().slice(0, 16);
+};
+
 const formInicial: FichaForm = {
   paciente: "",
+  fecha: obtenerFechaHoraLocal(),
   motivo_consulta: "",
   anamnesis: "",
   peso_kg: "",
@@ -89,10 +101,14 @@ export default function NuevaFichaPage() {
     try {
       setGuardando(true);
 
+      // Convertir fecha local a ISO 8601 UTC para el backend
+      const fechaISO = new Date(form.fecha).toISOString();
+
       const res = await apiFetch("/fichas/", {
         method: "POST",
         body: JSON.stringify({
           paciente: Number(form.paciente),
+          fecha: fechaISO,
           motivo_consulta: form.motivo_consulta,
           anamnesis: form.anamnesis || null,
           peso_kg: form.peso_kg || null,
@@ -147,7 +163,28 @@ export default function NuevaFichaPage() {
           <select
             className="input w-full"
             value={form.paciente}
-            onChange={(e) => setForm({ ...form, paciente: e.target.value })}
+            onChange={(e) => {
+              const nuevoPacienteId = e.target.value;
+              setForm({ ...form, paciente: nuevoPacienteId });
+              
+              // Actualizar la URL con el nuevo paciente
+              if (nuevoPacienteId) {
+                const newUrl = new URL(window.location.href);
+                newUrl.searchParams.set('paciente', nuevoPacienteId);
+                if (citaParam) {
+                  newUrl.searchParams.set('cita', citaParam);
+                }
+                window.history.replaceState({}, '', newUrl.toString());
+              } else {
+                // Si no hay paciente seleccionado, remover el parámetro
+                const newUrl = new URL(window.location.href);
+                newUrl.searchParams.delete('paciente');
+                if (citaParam) {
+                  newUrl.searchParams.set('cita', citaParam);
+                }
+                window.history.replaceState({}, '', newUrl.toString());
+              }
+            }}
           >
             <option value="">Seleccionar paciente *</option>
             {pacientes.map((p) => (
@@ -189,6 +226,14 @@ export default function NuevaFichaPage() {
         {/* ── Consulta ──────────────────────────────────────────────────── */}
         <section className="card space-y-4">
           <h2 className="subtitle">Consulta</h2>
+
+          <Campo label="Fecha y hora de consulta *">
+            <input
+              className="input"
+              type="datetime-local"
+              {...f("fecha")}
+            />
+          </Campo>
 
           <Campo label="Motivo de consulta *">
             <input className="input" placeholder="¿Por qué consulta hoy?" {...f("motivo_consulta")} />

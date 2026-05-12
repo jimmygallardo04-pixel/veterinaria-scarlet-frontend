@@ -32,3 +32,28 @@ export function formatFecha(value: string | Date | null | undefined): string {
   const year = pad(d.getFullYear(), 4);
   return `${day}/${month}/${year}`;
 }
+
+/**
+ * Formatea la edad del paciente mostrando años y meses
+ * @param edad - Edad en años (puede ser decimal)
+ * @returns String formateado con años y meses, ej: "2 años - 3 meses"
+ */
+export function formatEdad(edad: number | null | undefined): string {
+  if (edad == null) return "-";
+  
+  const años = Math.floor(edad);
+  const meses = Math.round((edad - años) * 12);
+  
+  if (años === 0) {
+    return meses === 1 ? "1 mes" : `${meses} meses`;
+  }
+  
+  if (meses === 0) {
+    return años === 1 ? "1 año" : `${años} años`;
+  }
+  
+  const textoAños = años === 1 ? "1 año" : `${años} años`;
+  const textoMeses = meses === 1 ? "1 mes" : `${meses} meses`;
+  
+  return `${textoAños} - ${textoMeses}`;
+}
