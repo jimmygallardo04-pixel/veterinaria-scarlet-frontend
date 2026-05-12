@@ -10,6 +10,25 @@ import PageSkeleton from "@/app/components/PageSkeleton";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import { formatFechaHora, formatEdad } from "@/lib/utils";
 
+// Hook personalizado para actualizar la edad automáticamente
+function useEdadActualizada(fechaNacimiento: string | null | undefined) {
+  const [edad, setEdad] = useState(() => formatEdad(fechaNacimiento));
+
+  useEffect(() => {
+    // Actualizar la edad inmediatamente
+    setEdad(formatEdad(fechaNacimiento));
+
+    // Actualizar cada minuto (60000 ms)
+    const intervalo = setInterval(() => {
+      setEdad(formatEdad(fechaNacimiento));
+    }, 60000);
+
+    return () => clearInterval(intervalo);
+  }, [fechaNacimiento]);
+
+  return edad;
+}
+
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
 type Paciente = {
@@ -89,6 +108,9 @@ export default function DetallePacientePage() {
   const [tab, setTab] = useState<Tab>("vacunas");
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
+
+  // Edad que se actualiza automáticamente cada minuto
+  const edadActualizada = useEdadActualizada(paciente?.fecha_nacimiento);
 
   // Formulario vacuna (crear)
   const vacunaFormInicial = { nombre_vacuna: "", fecha_aplicacion: "", proxima_dosis: "", observaciones: "" };
@@ -306,7 +328,7 @@ export default function DetallePacientePage() {
                 {paciente.especie_nombre ?? "Sin especie"}
                 {paciente.raza ? ` · ${paciente.raza}` : ""}
                 {paciente.sexo_nombre ? ` · ${paciente.sexo_nombre}` : ""}
-                {paciente.fecha_nacimiento ? ` · ${formatEdad(paciente.fecha_nacimiento)}` : ""}
+                {paciente.fecha_nacimiento ? ` · ${edadActualizada}` : ""}
                 {" · Tutor: "}{paciente.tutor_nombre}
               </p>
             )}
@@ -324,7 +346,7 @@ export default function DetallePacientePage() {
               <div><p className="text-muted text-xs">Especie</p><p className="font-medium">{paciente.especie_nombre ?? "-"}</p></div>
               <div><p className="text-muted text-xs">Raza</p><p className="font-medium">{paciente.raza ?? "-"}</p></div>
               <div><p className="text-muted text-xs">Sexo</p><p className="font-medium">{paciente.sexo_nombre ?? "-"}</p></div>
-              <div><p className="text-muted text-xs">Edad</p><p className="font-medium">{formatEdad(paciente.fecha_nacimiento)}</p></div>
+              <div><p className="text-muted text-xs">Edad</p><p className="font-medium">{edadActualizada}</p></div>
               <div><p className="text-muted text-xs">Color</p><p className="font-medium">{paciente.color ?? "-"}</p></div>
               <div><p className="text-muted text-xs">Esterilizado</p><p className="font-medium">{paciente.esterilizado ? "Sí" : "No"}</p></div>
               <div><p className="text-muted text-xs">Tutor</p><p className="font-medium">{paciente.tutor_nombre}</p></div>
