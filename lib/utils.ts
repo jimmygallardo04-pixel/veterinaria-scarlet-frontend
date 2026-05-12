@@ -41,7 +41,15 @@ export function formatFecha(value: string | Date | null | undefined): string {
 export function calcularEdad(fechaNacimiento: string | Date | null | undefined): { años: number; meses: number } | null {
   if (!fechaNacimiento) return null;
   
-  const nacimiento = new Date(fechaNacimiento);
+  // Si es string en formato YYYY-MM-DD, parsearlo como fecha local
+  let nacimiento: Date;
+  if (typeof fechaNacimiento === 'string') {
+    const [year, month, day] = fechaNacimiento.split('T')[0].split('-').map(Number);
+    nacimiento = new Date(year, month - 1, day);
+  } else {
+    nacimiento = new Date(fechaNacimiento);
+  }
+  
   if (isNaN(nacimiento.getTime())) return null;
   
   const hoy = new Date();
