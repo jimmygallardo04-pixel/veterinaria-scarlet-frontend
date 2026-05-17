@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { apiFetch, type PaginatedResponse } from "@/lib/api";
 import { formatFechaHora } from "@/lib/utils";
