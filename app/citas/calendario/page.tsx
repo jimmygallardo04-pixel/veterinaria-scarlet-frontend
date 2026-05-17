@@ -1,22 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+import useSWR from "swr";
 import { Calendar, dayjsLocalizer } from "react-big-calendar";
 import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
 import dayjs from "dayjs";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, swrFetcher } from "@/lib/api";
 import BackButton from "@/app/components/BackButton";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import VacunaDetailModal from "@/app/components/modals/VacunaDetailModal";
 import TratamientoDetailModal from "@/app/components/modals/TratamientoDetailModal";
 
 const localizer = dayjsLocalizer(dayjs);
-const DnDCalendar = withDragAndDrop<CalendarEvent, object>(
-  Calendar as any
-) as any;
+const DnDCalendar = withDragAndDrop<CalendarEvent>(Calendar);
 
 type Cita = {
   id: number;
@@ -72,27 +71,28 @@ type CalendarEvent = {
 type CalendarView = "month" | "week" | "day" | "agenda";
 
 export default function CalendarioCitasPage() {
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [pacientes, setPacientes] = useState<Paciente[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: citasData, mutate: mutateCitas, isLoading: isLoadingCitas } = useSWR<{ results: Cita[] }>("/citas/?page_size=500", swrFetcher);
+  const { data: vacunasData, isLoading: isLoadingVacunas } = useSWR<{ results: Vacuna[] }>("/vacunas/?page_size=500", swrFetcher);
+  const { data: tratsData, isLoading: isLoadingTrats } = useSWR<{ results: Tratamiento[] }>("/tratamientos/?page_size=500", swrFetcher);
+  const { data: pacientesData, isLoading: isLoadingPacs } = useSWR<{ results: Paciente[] }>("/pacientes/?page_size=200", swrFetcher);
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modoEdicion, setModoEdicion] = useState(false);
-  const [citaSeleccionadaId, setCitaSeleccionadaId] = useState<number | null>(null);
-  const [confirmEliminar, setConfirmEliminar] = useState(false);
+  const pacientes: Paciente[] = pacientesData?.results ?? [];
+  const loading = isLoadingCitas || isLoadingVacunas || isLoadingTrats || isLoadingPacs;
 
-  const [calendarDate, setCalendarDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState<CalendarView>("month");
-
-  const [filters, setFilters] = useState({
-    citas: true,
-    vacunas: true,
-    tratamientos: true,
-  });
-
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  
+  const [modalOpen, setModalOpen] = useState(false);
+  const [citaSeleccionadaId, setCitaSeleccionadaId] = useState<number | null>(null);
+  
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const [filters, setFilters] = useState({ citas: true, vacunas: true, tratamientos: true });
+  
+  const [modoEdicion, setModoEdicion] = useState(false);
+  const [modalDetalleAbierto, setModalDetalleAbierto] = useState(false);
   const [vacunaSeleccionada, setVacunaSeleccionada] = useState<Vacuna | null>(null);
   const [tratamientoSeleccionado, setTratamientoSeleccionado] = useState<Tratamiento | null>(null);
-  const [modalDetalleAbierto, setModalDetalleAbierto] = useState(false);
 
   const [form, setForm] = useState({
     paciente: "",
@@ -103,131 +103,36 @@ export default function CalendarioCitasPage() {
   });
 
   const limpiarForm = () => {
-    setForm({
-      paciente: "",
-      fecha_hora: "",
-      motivo: "",
-      observaciones: "",
-      estado: "pendiente",
-    });
-
-    setModoEdicion(false);
+    setForm({ paciente: "", fecha_hora: "", motivo: "", observaciones: "", estado: "pendiente" });
     setCitaSeleccionadaId(null);
   };
 
-  const haySolape = (evento: CalendarEvent) => {
-    return events.some((otro) => {
-      if (otro.id === evento.id) return false;
-      return evento.start < otro.end && evento.end > otro.start;
-    });
-  };
+  const events = useMemo(() => {
+    if (loading) return [];
+    
+    const eventos: CalendarEvent[] = [];
+    const citasRaw: Cita[] = citasData?.results ?? [];
+    const vacunasRaw: Vacuna[] = vacunasData?.results ?? [];
+    const tratsRaw: Tratamiento[] = tratsData?.results ?? [];
 
-  const getVacunaEstado = (vacuna: Vacuna): "aplicada" | "proxima" | "vencida" => {
-    if (!vacuna.proxima_dosis) return "aplicada";
-    const hoy = new Date().toISOString().split("T")[0];
-    return vacuna.proxima_dosis < hoy ? "vencida" : "proxima";
-  };
-
-  const getTratamientoEstado = (tratamiento: Tratamiento): "futuro" | "activo" | "finalizado" => {
-    const hoy = new Date().toISOString().split("T")[0];
-    if (tratamiento.fecha_inicio > hoy) return "futuro";
-    if (!tratamiento.fecha_fin || tratamiento.fecha_fin >= hoy) return "activo";
-    return "finalizado";
-  };
-
-  const eventStyleGetter = (evento: CalendarEvent) => {
-    const solapado = haySolape(evento);
-    let backgroundColor = "#22c55e";
-    let borderColor = "#16a34a";
-
-    if (evento.resourceType === "cita") {
-      const estado = evento.cita?.estado;
-      if (estado === "completada") {
-        backgroundColor = "#2563eb";
-        borderColor = "#1d4ed8";
-      } else if (estado === "cancelada") {
-        backgroundColor = "#64748b";
-        borderColor = "#475569";
-      } else {
-        backgroundColor = "#22c55e";
-        borderColor = "#16a34a";
-      }
-    } else if (evento.resourceType === "vacuna") {
-      const estado = getVacunaEstado(evento.vacuna!);
-      if (estado === "vencida") {
-        backgroundColor = "#ef4444";
-        borderColor = "#dc2626";
-      } else if (estado === "proxima") {
-        backgroundColor = "#f59e0b";
-        borderColor = "#d97706";
-      } else {
-        backgroundColor = "#9333ea";
-        borderColor = "#7e22ce";
-      }
-    } else if (evento.resourceType === "tratamiento") {
-      const estado = getTratamientoEstado(evento.tratamiento!);
-      if (estado === "futuro") {
-        backgroundColor = "#3b82f6";
-        borderColor = "#2563eb";
-      } else if (estado === "finalizado") {
-        backgroundColor = "#94a3b8";
-        borderColor = "#64748b";
-      } else {
-        backgroundColor = "#06b6d4";
-        borderColor = "#0891b2";
-      }
-    }
-
-    if (solapado && evento.resourceType === "cita") {
-      backgroundColor = "#f97316";
-      borderColor = "#ea580c";
-    }
-
-    return {
-      style: {
-        backgroundColor,
-        borderColor,
-        color: "white",
-        borderRadius: "8px",
-        padding: "2px 6px",
-      },
-    };
-  };
-
-  const cargarCitas = async () => {
-    const res = await apiFetch("/citas/?page_size=500");
-    if (!res.ok) { toast.error("Error cargando citas"); return []; }
-
-    const json = await res.json();
-    const data: Cita[] = json.results ?? json;
-    return data.map((cita) => {
+    citasRaw.forEach((cita) => {
       const inicio = new Date(cita.fecha_hora);
       const fin = new Date(inicio.getTime() + 30 * 60000);
-      return {
+      eventos.push({
         id: `cita-${cita.id}`,
         title: `${cita.paciente_nombre} - ${cita.motivo}`,
         start: inicio,
         end: fin,
-        resourceType: "cita" as const,
+        resourceType: "cita",
         cita,
-      };
+      });
     });
-  };
 
-  const cargarVacunas = async () => {
-    const res = await apiFetch("/vacunas/?page_size=500");
-    if (!res.ok) { toast.error("Error cargando vacunas"); return []; }
-
-    const json = await res.json();
-    const data: Vacuna[] = json.results ?? json;
-    const eventos: CalendarEvent[] = [];
-
-    data.forEach((vacuna) => {
+    vacunasRaw.forEach((vacuna) => {
       const fecha = new Date(vacuna.fecha_aplicacion);
       fecha.setHours(0, 0, 0, 0);
       const fin = new Date(fecha);
       fin.setHours(23, 59, 59, 999);
-
       eventos.push({
         id: `vacuna-${vacuna.id}`,
         title: `💉 ${vacuna.nombre_vacuna}`,
@@ -242,7 +147,6 @@ export default function CalendarioCitasPage() {
         proximaFecha.setHours(0, 0, 0, 0);
         const proximaFin = new Date(proximaFecha);
         proximaFin.setHours(23, 59, 59, 999);
-
         eventos.push({
           id: `vacuna-${vacuna.id}-proxima`,
           title: `💉 Próxima dosis: ${vacuna.nombre_vacuna}`,
@@ -254,19 +158,9 @@ export default function CalendarioCitasPage() {
       }
     });
 
-    return eventos;
-  };
-
-  const cargarTratamientos = async () => {
-    const res = await apiFetch("/tratamientos/?page_size=500");
-    if (!res.ok) { toast.error("Error cargando tratamientos"); return []; }
-
-    const json = await res.json();
-    const data: Tratamiento[] = json.results ?? json;
-    return data.map((tratamiento) => {
+    tratsRaw.forEach((tratamiento) => {
       const inicio = new Date(tratamiento.fecha_inicio);
       inicio.setHours(0, 0, 0, 0);
-
       let fin: Date;
       if (tratamiento.fecha_fin) {
         fin = new Date(tratamiento.fecha_fin);
@@ -275,41 +169,18 @@ export default function CalendarioCitasPage() {
         fin = new Date();
         fin.setHours(23, 59, 59, 999);
       }
-
-      return {
+      eventos.push({
         id: `tratamiento-${tratamiento.id}`,
         title: `💊 ${tratamiento.medicamento}`,
         start: inicio,
         end: fin,
-        resourceType: "tratamiento" as const,
+        resourceType: "tratamiento",
         tratamiento,
-      };
+      });
     });
-  };
 
-  const cargarPacientes = async () => {
-    const res = await apiFetch("/pacientes/?page_size=200");
-    if (!res.ok) { toast.error("Error cargando pacientes"); return; }
-    const d = await res.json();
-    setPacientes(d.results ?? d);
-  };
-
-  const cargarDatos = async () => {
-    try {
-      setLoading(true);
-      const [citas, vacunas, tratamientos] = await Promise.all([
-        cargarCitas(),
-        cargarVacunas(),
-        cargarTratamientos(),
-      ]);
-      setEvents([...citas, ...vacunas, ...tratamientos]);
-      await cargarPacientes();
-    } catch {
-      toast.error("Error cargando calendario");
-    } finally {
-      setLoading(false);
-    }
-  };
+    return eventos;
+  }, [citasData, vacunasData, tratsData, loading]);
 
   const crearCita = async () => {
     if (!form.paciente || !form.fecha_hora || !form.motivo) {
@@ -348,7 +219,7 @@ export default function CalendarioCitasPage() {
     toast.success("Cita creada correctamente");
     setModalOpen(false);
     limpiarForm();
-    cargarDatos();
+    mutateCitas();
   };
 
   const actualizarCita = async () => {
@@ -380,11 +251,11 @@ export default function CalendarioCitasPage() {
     toast.success("Cita actualizada correctamente");
     setModalOpen(false);
     limpiarForm();
-    cargarDatos();
+    mutateCitas();
   };
 
-  const moverCita = async ({ event, start }: any) => {
-    if (event.resourceType !== "cita") return;
+  const moverCita = async ({ event, start }: { event: CalendarEvent; start: Date | string }) => {
+    if (event.resourceType !== "cita" || !event.cita) return;
     const citaId = Number(event.id.split("-")[1]);
     const fechaLocal = dayjs(start).format("YYYY-MM-DDTHH:mm:ss");
     const res = await apiFetch(`/citas/${citaId}/`, {
@@ -393,12 +264,12 @@ export default function CalendarioCitasPage() {
     });
     if (!res.ok) { toast.error("Error moviendo cita"); return; }
     toast.success("Cita actualizada");
-    cargarDatos();
+    mutateCitas();
   };
 
   const eliminarCita = async () => {
     if (!citaSeleccionadaId) return;
-    setConfirmEliminar(false);
+    setConfirmOpen(false);
 
     const res = await apiFetch(`/citas/${citaSeleccionadaId}/`, { method: "DELETE" });
     if (!res.ok) { toast.error("Error eliminando cita"); return; }
@@ -406,12 +277,32 @@ export default function CalendarioCitasPage() {
     toast.success("Cita eliminada correctamente");
     setModalOpen(false);
     limpiarForm();
-    cargarDatos();
+    mutateCitas();
   };
 
-  useEffect(() => {
-    cargarDatos();
-  }, []);
+  const eventStyleGetter = (event: CalendarEvent) => {
+    let backgroundColor = "#3b82f6"; // blue-500 (default cita)
+    if (event.resourceType === "vacuna") {
+      backgroundColor = "#10b981"; // green-500
+    } else if (event.resourceType === "tratamiento") {
+      backgroundColor = "#f59e0b"; // amber-500
+    } else if (event.resourceType === "cita") {
+      backgroundColor = event.cita?.estado === "completado" ? "#64748b"
+        : event.cita?.estado === "cancelado" ? "#ef4444"
+        : "#3b82f6";
+    }
+
+    return {
+      style: {
+        backgroundColor,
+        borderRadius: "4px",
+        opacity: 0.9,
+        color: "white",
+        border: "none",
+        display: "block",
+      },
+    };
+  };
 
   if (loading) {
     return (
@@ -537,7 +428,7 @@ export default function CalendarioCitasPage() {
             onEventResize={moverCita}
             resizable
             selectable
-            onSelectSlot={(slotInfo: any) => {
+            onSelectSlot={(slotInfo: { start: Date; end: Date }) => {
               limpiarForm();
 
               setForm({
@@ -551,8 +442,8 @@ export default function CalendarioCitasPage() {
               setModoEdicion(false);
               setModalOpen(true);
             }}
-            onSelectEvent={(event: any) => {
-              if (event.resourceType === "cita") {
+            onSelectEvent={(event: CalendarEvent) => {
+              if (event.resourceType === "cita" && event.cita) {
                 setModoEdicion(true);
                 setCitaSeleccionadaId(event.cita.id);
 
@@ -567,10 +458,10 @@ export default function CalendarioCitasPage() {
                 });
 
                 setModalOpen(true);
-              } else if (event.resourceType === "vacuna") {
+              } else if (event.resourceType === "vacuna" && event.vacuna) {
                 setVacunaSeleccionada(event.vacuna);
                 setModalDetalleAbierto(true);
-              } else if (event.resourceType === "tratamiento") {
+              } else if (event.resourceType === "tratamiento" && event.tratamiento) {
                 setTratamientoSeleccionado(event.tratamiento);
                 setModalDetalleAbierto(true);
               }
@@ -596,7 +487,16 @@ export default function CalendarioCitasPage() {
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
           onClick={() => { setModalOpen(false); limpiarForm(); }}>
-          <div className="card w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+          <div className="relative card w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => { setModalOpen(false); limpiarForm(); }}
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 focus:outline-none"
+              aria-label="Cerrar"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
             <h2 className="subtitle mb-4">
               {modoEdicion ? "Editar cita" : "Nueva cita"}
             </h2>
@@ -659,7 +559,7 @@ export default function CalendarioCitasPage() {
             <div className="flex justify-between gap-2">
               <div>
                 {modoEdicion && (
-                  <button onClick={() => setConfirmEliminar(true)} className="btn-danger">
+                  <button onClick={() => setConfirmOpen(true)} className="btn-danger">
                     Eliminar
                   </button>
                 )}
@@ -686,13 +586,14 @@ export default function CalendarioCitasPage() {
       )}
 
       <ConfirmDialog
-        open={confirmEliminar}
+        open={confirmOpen}
         title="Eliminar cita"
         message="¿Estás seguro de que quieres eliminar esta cita?"
         confirmLabel="Eliminar"
         danger
+        requireKeyword="ELIMINAR"
         onConfirm={eliminarCita}
-        onCancel={() => setConfirmEliminar(false)}
+        onCancel={() => setConfirmOpen(false)}
       />
 
       <VacunaDetailModal

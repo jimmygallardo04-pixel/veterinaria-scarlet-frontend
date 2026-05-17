@@ -68,8 +68,10 @@ export function useInactivityTimer({
   useEffect(() => {
     if (!enabled) return;
 
-    // Inicializar timer en primer render
-    resetInactivityTimer();
+    // Inicializar timer asíncronamente para evitar setState en el mismo ciclo
+    setTimeout(() => {
+      resetInactivityTimer();
+    }, 0);
 
     const events = ["mousedown", "keydown", "scroll", "touchstart", "click"];
 

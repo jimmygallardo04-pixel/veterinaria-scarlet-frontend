@@ -3,11 +3,15 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { apiFetch } from "@/lib/api";
 import { useUser } from "@/lib/useUser";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
+import BackButton from "@/app/components/BackButton";
 
-type Item = { id: number; nombre: string; activo?: boolean; };
+type Item = { id: number; uuid: string; nombre: string; activo?: boolean; };
 type Veterinario = { id: number; nombre: string; email: string; rol: string; };
 
 // ─── Mantenedor genérico de catálogos ───────────────────────────────────────
@@ -24,10 +28,10 @@ function Mantenedor({
   const [loading, setLoading] = useState(true);
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [guardando, setGuardando] = useState(false);
-  const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
   const [editNombre, setEditNombre] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [itemAEliminar, setItemAEliminar] = useState<number | null>(null);
+  const [itemAEliminar, setItemAEliminar] = useState<Item | null>(null);
 
   const cargar = async () => {
     try {
@@ -67,11 +71,11 @@ function Mantenedor({
     }
   };
 
-  const guardarEdicion = async (id: number) => {
+  const guardarEdicion = async (uuid: string) => {
     if (!editNombre.trim()) { toast.warning("El nombre no puede estar vacío"); return; }
     try {
       setGuardando(true);
-      const res = await apiFetch(`${endpoint}${id}/`, {
+      const res = await apiFetch(`${endpoint}${uuid}/`, {
         method: "PATCH",
         body: JSON.stringify({ nombre: editNombre.trim() }),
       });
@@ -90,7 +94,7 @@ function Mantenedor({
     if (!itemAEliminar) return;
     setConfirmOpen(false);
     try {
-      const res = await apiFetch(`${endpoint}${itemAEliminar}/`, { method: "DELETE" });
+      const res = await apiFetch(`${endpoint}${itemAEliminar.uuid}/`, { method: "DELETE" });
       if (!res.ok) { toast.error("Error eliminando"); return; }
       toast.success("Eliminado correctamente");
       cargar();
@@ -131,29 +135,29 @@ function Mantenedor({
         <div className="space-y-2">
           {items.map((item) => (
             <div key={item.id} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-              {editandoId === item.id ? (
+              {editandoId === item.uuid ? (
                 <>
                   <input
                     className="input flex-1"
                     value={editNombre}
                     onChange={(e) => setEditNombre(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && guardarEdicion(item.id)}
+                    onKeyDown={(e) => e.key === "Enter" && guardarEdicion(item.uuid)}
                     autoFocus
                   />
-                  <button onClick={() => guardarEdicion(item.id)} disabled={guardando} className="btn-primary">Guardar</button>
+                  <button onClick={() => guardarEdicion(item.uuid)} disabled={guardando} className="btn-primary">Guardar</button>
                   <button onClick={() => setEditandoId(null)} className="btn-secondary">Cancelar</button>
                 </>
               ) : (
                 <>
                   <span className="flex-1 text-sm font-medium text-slate-800">{item.nombre}</span>
                   <button
-                    onClick={() => { setEditandoId(item.id); setEditNombre(item.nombre); }}
+                    onClick={() => { setEditandoId(item.uuid); setEditNombre(item.nombre); }}
                     className="btn-ghost text-xs"
                   >
                     Editar
                   </button>
                   <button
-                    onClick={() => { setItemAEliminar(item.id); setConfirmOpen(true); }}
+                    onClick={() => { setItemAEliminar(item); setConfirmOpen(true); }}
                     className="btn-danger text-xs"
                   >
                     Eliminar
@@ -171,6 +175,7 @@ function Mantenedor({
         message="¿Estás seguro? Si hay pacientes o documentos usando este valor, podría causar problemas."
         confirmLabel="Eliminar"
         danger
+        requireKeyword="ELIMINAR"
         onConfirm={eliminar}
         onCancel={() => { setConfirmOpen(false); setItemAEliminar(null); }}
       />
@@ -178,21 +183,50 @@ function Mantenedor({
   );
 }
 
+const vetCreateSchema = z.object({
+  nombre: z.string().min(1, "El nombre es obligatorio"),
+  email: z.string().email("Correo inválido"),
+  password: z.string().min(8, "Mínimo 8 caracteres"),
+});
+type VetCreateValues = z.infer<typeof vetCreateSchema>;
+
+const vetEditSchema = z.object({
+  nombre: z.string().min(1, "El nombre es obligatorio"),
+  email: z.string().email("Correo inválido"),
+  password: z.string().optional().refine(val => !val || val.length >= 8, {
+    message: "Mínimo 8 caracteres",
+  }),
+});
+type VetEditValues = z.infer<typeof vetEditSchema>;
+
 // ─── Sección de equipo (veterinarios) ───────────────────────────────────────
 function EquipoVeterinarios() {
   const [veterinarios, setVeterinarios] = useState<Veterinario[]>([]);
   const [loading, setLoading] = useState(true);
-  const [guardando, setGuardando] = useState(false);
 
   // Formulario de creación
   const [mostrarForm, setMostrarForm] = useState(false);
-  const [form, setForm] = useState({ nombre: "", email: "", password: "" });
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const {
+    register: registerCreate,
+    handleSubmit: handleCreateSubmit,
+    reset: resetCreate,
+    setError: setErrorCreate,
+    formState: { errors: createErrors, isSubmitting: isSubmittingCreate },
+  } = useForm<VetCreateValues>({
+    resolver: zodResolver(vetCreateSchema),
+  });
 
   // Edición inline
   const [editandoId, setEditandoId] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState({ nombre: "", email: "", password: "" });
-  const [editErrors, setEditErrors] = useState<{ email?: string; password?: string }>({});
+  const {
+    register: registerEdit,
+    handleSubmit: handleEditSubmit,
+    reset: resetEdit,
+    setError: setErrorEdit,
+    formState: { errors: editErrors, isSubmitting: isSubmittingEdit },
+  } = useForm<VetEditValues>({
+    resolver: zodResolver(vetEditSchema),
+  });
 
   // Confirmación de eliminación
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -213,44 +247,25 @@ function EquipoVeterinarios() {
 
   useEffect(() => { cargar(); }, []);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-    if (name === "email" || name === "password") setErrors((prev) => ({ ...prev, [name]: undefined }));
-  };
-
-  const handleEditChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setEditForm((prev) => ({ ...prev, [name]: value }));
-    if (name === "email" || name === "password") setEditErrors((prev) => ({ ...prev, [name]: undefined }));
-  };
-
   const iniciarEdicion = (vet: Veterinario) => {
     setEditandoId(vet.id);
-    setEditForm({ nombre: vet.nombre, email: vet.email, password: "" });
-    setEditErrors({});
+    resetEdit({ nombre: vet.nombre, email: vet.email, password: "" });
   };
 
   const cancelarEdicion = () => {
     setEditandoId(null);
-    setEditErrors({});
   };
 
-  const guardarEdicion = async (id: number) => {
-    if (!editForm.nombre.trim() || !editForm.email.trim()) {
-      toast.warning("Nombre y correo son obligatorios");
-      return;
-    }
+  const guardarEdicion = async (data: VetEditValues) => {
+    if (!editandoId) return;
     try {
-      setGuardando(true);
-      setEditErrors({});
       const body: Record<string, string> = {
-        nombre: editForm.nombre.trim(),
-        email: editForm.email.trim(),
+        nombre: data.nombre.trim(),
+        email: data.email.trim(),
       };
-      if (editForm.password) body.password = editForm.password;
+      if (data.password) body.password = data.password;
 
-      const res = await apiFetch(`/veterinarios/${id}/`, {
+      const res = await apiFetch(`/veterinarios/${editandoId}/`, {
         method: "PATCH",
         body: JSON.stringify(body),
       });
@@ -264,38 +279,27 @@ function EquipoVeterinarios() {
 
       if (res.status === 400) {
         const err = await res.json().catch(() => ({}));
-        const newErrors: typeof editErrors = {};
-        if (err.email) newErrors.email = Array.isArray(err.email) ? err.email[0] : err.email;
-        if (err.password) newErrors.password = Array.isArray(err.password) ? err.password[0] : err.password;
-        if (Object.keys(newErrors).length > 0) { setEditErrors(newErrors); return; }
-        toast.error(err.detail || "Error al actualizar");
+        if (err.email) setErrorEdit("email", { message: Array.isArray(err.email) ? err.email[0] : err.email });
+        if (err.password) setErrorEdit("password", { message: Array.isArray(err.password) ? err.password[0] : err.password });
+        if (!err.email && !err.password) toast.error(err.detail || "Error al actualizar");
         return;
       }
       toast.error("Error al actualizar");
     } catch {
       toast.error("Error de conexión");
-    } finally {
-      setGuardando(false);
     }
   };
 
-  const crear = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.nombre.trim() || !form.email.trim() || !form.password) {
-      toast.warning("Completa todos los campos");
-      return;
-    }
+  const crear = async (data: VetCreateValues) => {
     try {
-      setGuardando(true);
-      setErrors({});
       const res = await apiFetch("/veterinarios/", {
         method: "POST",
-        body: JSON.stringify(form),
+        body: JSON.stringify(data),
       });
 
       if (res.ok) {
-        toast.success(`Veterinario ${form.nombre} creado correctamente`);
-        setForm({ nombre: "", email: "", password: "" });
+        toast.success(`Veterinario ${data.nombre} creado correctamente`);
+        resetCreate();
         setMostrarForm(false);
         cargar();
         return;
@@ -303,18 +307,14 @@ function EquipoVeterinarios() {
 
       if (res.status === 400) {
         const err = await res.json().catch(() => ({}));
-        const newErrors: typeof errors = {};
-        if (err.email) newErrors.email = Array.isArray(err.email) ? err.email[0] : err.email;
-        if (err.password) newErrors.password = Array.isArray(err.password) ? err.password[0] : err.password;
-        if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
-        toast.error(err.detail || "Error al crear el veterinario");
+        if (err.email) setErrorCreate("email", { message: Array.isArray(err.email) ? err.email[0] : err.email });
+        if (err.password) setErrorCreate("password", { message: Array.isArray(err.password) ? err.password[0] : err.password });
+        if (!err.email && !err.password) toast.error(err.detail || "Error al crear el veterinario");
         return;
       }
       toast.error("Error al crear el veterinario");
     } catch {
       toast.error("Error de conexión");
-    } finally {
-      setGuardando(false);
     }
   };
 
@@ -345,7 +345,7 @@ function EquipoVeterinarios() {
           <p className="text-muted">Gestiona las cuentas de los veterinarios de tu clínica.</p>
         </div>
         <button
-          onClick={() => { setMostrarForm((v) => !v); setErrors({}); }}
+          onClick={() => { setMostrarForm((v) => !v); resetCreate(); }}
           className="btn-primary shrink-0"
         >
           {mostrarForm ? "Cancelar" : "+ Agregar veterinario"}
@@ -354,28 +354,29 @@ function EquipoVeterinarios() {
 
       {/* Formulario de creación */}
       {mostrarForm && (
-        <form onSubmit={crear} className="mb-6 p-4 rounded-lg border border-slate-200 bg-slate-50 space-y-3">
+        <form onSubmit={handleCreateSubmit(crear)} className="mb-6 p-4 rounded-lg border border-slate-200 bg-slate-50 space-y-3">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Nombre completo</label>
-            <input className="input" placeholder="Ej: Dra. Ana García" name="nombre"
-              value={form.nombre} onChange={handleChange} disabled={guardando} autoFocus />
+            <input className="input" placeholder="Ej: Dra. Ana García"
+              {...registerCreate("nombre")} disabled={isSubmittingCreate} autoFocus />
+            {createErrors.nombre && <p className="mt-1 text-sm text-red-600">{createErrors.nombre.message}</p>}
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Correo electrónico</label>
-            <input className={`input${errors.email ? " border-red-400 focus:ring-red-300" : ""}`}
-              placeholder="vet@tuclinica.com" type="email" name="email"
-              value={form.email} onChange={handleChange} disabled={guardando} />
-            {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
+            <input className={`input${createErrors.email ? " border-red-400 focus:ring-red-300" : ""}`}
+              placeholder="vet@tuclinica.com" type="email"
+              {...registerCreate("email")} disabled={isSubmittingCreate} />
+            {createErrors.email && <p className="mt-1 text-sm text-red-600">{createErrors.email.message}</p>}
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña temporal</label>
-            <input className={`input${errors.password ? " border-red-400 focus:ring-red-300" : ""}`}
-              placeholder="Mínimo 8 caracteres" type="password" name="password"
-              value={form.password} onChange={handleChange} disabled={guardando} />
-            {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password}</p>}
+            <input className={`input${createErrors.password ? " border-red-400 focus:ring-red-300" : ""}`}
+              placeholder="Mínimo 8 caracteres" type="password"
+              {...registerCreate("password")} disabled={isSubmittingCreate} />
+            {createErrors.password && <p className="mt-1 text-sm text-red-600">{createErrors.password.message}</p>}
           </div>
-          <button type="submit" disabled={guardando} className="btn-primary w-full">
-            {guardando ? "Creando cuenta..." : "Crear cuenta de veterinario"}
+          <button type="submit" disabled={isSubmittingCreate} className="btn-primary w-full">
+            {isSubmittingCreate ? "Creando cuenta..." : "Crear cuenta de veterinario"}
           </button>
         </form>
       )}
@@ -395,39 +396,38 @@ function EquipoVeterinarios() {
             <div key={vet.id} className="rounded-lg border border-slate-200 bg-slate-50">
               {editandoId === vet.id ? (
                 /* ── Modo edición ── */
-                <div className="p-4 space-y-3">
+                <form onSubmit={handleEditSubmit(guardarEdicion)} className="p-4 space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-slate-600 mb-1">Nombre</label>
-                      <input className="input" name="nombre" value={editForm.nombre}
-                        onChange={handleEditChange} disabled={guardando} autoFocus />
+                      <input className="input" {...registerEdit("nombre")} disabled={isSubmittingEdit} autoFocus />
+                      {editErrors.nombre && <p className="mt-1 text-xs text-red-600">{editErrors.nombre.message}</p>}
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-slate-600 mb-1">Correo</label>
                       <input className={`input${editErrors.email ? " border-red-400" : ""}`}
-                        type="email" name="email" value={editForm.email}
-                        onChange={handleEditChange} disabled={guardando} />
-                      {editErrors.email && <p className="mt-1 text-xs text-red-600">{editErrors.email}</p>}
+                        type="email" {...registerEdit("email")} disabled={isSubmittingEdit} />
+                      {editErrors.email && <p className="mt-1 text-xs text-red-600">{editErrors.email.message}</p>}
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-xs font-medium text-slate-600 mb-1">
                         Nueva contraseña <span className="text-slate-400">(dejar vacío para no cambiar)</span>
                       </label>
                       <input className={`input${editErrors.password ? " border-red-400" : ""}`}
-                        type="password" name="password" placeholder="Mínimo 8 caracteres"
-                        value={editForm.password} onChange={handleEditChange} disabled={guardando} />
-                      {editErrors.password && <p className="mt-1 text-xs text-red-600">{editErrors.password}</p>}
+                        type="password" placeholder="Mínimo 8 caracteres"
+                        {...registerEdit("password")} disabled={isSubmittingEdit} />
+                      {editErrors.password && <p className="mt-1 text-xs text-red-600">{editErrors.password.message}</p>}
                     </div>
                   </div>
                   <div className="flex gap-2 justify-end">
-                    <button onClick={cancelarEdicion} className="btn-secondary text-sm" disabled={guardando}>
+                    <button type="button" onClick={cancelarEdicion} className="btn-secondary text-sm" disabled={isSubmittingEdit}>
                       Cancelar
                     </button>
-                    <button onClick={() => guardarEdicion(vet.id)} className="btn-primary text-sm" disabled={guardando}>
-                      {guardando ? "Guardando..." : "Guardar cambios"}
+                    <button type="submit" className="btn-primary text-sm" disabled={isSubmittingEdit}>
+                      {isSubmittingEdit ? "Guardando..." : "Guardar cambios"}
                     </button>
                   </div>
-                </div>
+                </form>
               ) : (
                 /* ── Modo lectura ── */
                 <div className="flex items-center gap-3 px-4 py-3">
@@ -458,6 +458,7 @@ function EquipoVeterinarios() {
         message={`¿Eliminar la cuenta de ${vetAEliminar?.nombre || vetAEliminar?.email}? El usuario no podrá iniciar sesión.`}
         confirmLabel="Eliminar"
         danger
+        requireKeyword="ELIMINAR"
         onConfirm={eliminar}
         onCancel={() => { setConfirmOpen(false); setVetAEliminar(null); }}
       />
@@ -492,7 +493,9 @@ export default function ConfiguracionPage() {
   return (
     <main className="min-h-screen bg-slate-100 p-8">
       <div className="mx-auto max-w-4xl space-y-8">
-
+        <div className="mb-2">
+          <BackButton href="/dashboard" label="Volver al dashboard" />
+        </div>
         <div>
           <h1 className="title">Configuración</h1>
           <p className="text-muted">

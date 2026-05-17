@@ -8,6 +8,7 @@ import type { FichaClinica } from "@/lib/types";
 import PageSkeleton from "@/app/components/PageSkeleton";
 import Pagination from "@/app/components/Pagination";
 import MinimizableSection from "@/app/components/MinimizableSection";
+import BackButton from "@/app/components/BackButton";
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
@@ -29,7 +30,9 @@ export default function FichasPage() {
   return (
     <main className="min-h-screen bg-slate-100 p-4 md:p-8">
       <div className="mx-auto max-w-6xl">
-
+        <div className="mb-2">
+          <BackButton href="/dashboard" label="Volver al dashboard" />
+        </div>
         <div className="page-header">
           <div>
             <h1 className="title">Fichas clínicas</h1>
@@ -92,7 +95,9 @@ export default function FichasPage() {
                 <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
                   <div>
                     <p className="text-muted">{formatFechaHora(ficha.fecha)}</p>
-                    <h2 className="font-semibold text-slate-900 mt-0.5">{ficha.paciente_nombre}</h2>
+                    <Link href={`/pacientes/${ficha.paciente_uuid}`} className="font-semibold text-slate-900 mt-0.5 hover:underline">
+                      {ficha.paciente_nombre}
+                    </Link>
                     <p className="text-sm text-slate-700 mt-1">{ficha.motivo_consulta}</p>
                     {ficha.diagnostico && (
                       <p className="text-muted mt-1">
@@ -102,10 +107,10 @@ export default function FichasPage() {
                     )}
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row shrink-0">
-                    <Link href={`/fichas/${ficha.id}`} className="btn-primary text-center text-sm">
+                    <Link href={`/fichas/${ficha.uuid}`} className="btn-primary text-center text-sm">
                       Ver ficha
                     </Link>
-                    <Link href={`/pacientes/${ficha.paciente}`} className="btn-secondary text-center text-sm">
+                    <Link href={`/pacientes/${ficha.paciente_uuid}`} className="btn-secondary text-center text-sm">
                       Ver paciente
                     </Link>
                   </div>

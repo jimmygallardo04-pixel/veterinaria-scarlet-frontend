@@ -23,6 +23,7 @@ const ADMIN_LINKS = [
 
 type PacienteSugerencia = {
   id: number;
+  uuid: string;
   nombre: string;
   especie_nombre?: string;
   tutor_nombre?: string;
@@ -32,8 +33,8 @@ type PacienteSugerencia = {
  * Constructs the URL for navigating to a patient's detail page.
  * Exported as a pure function to enable property-based testing.
  */
-export function buildPacienteUrl(id: number): string {
-  return `/pacientes/${id}`;
+export function buildPacienteUrl(uuid: string): string {
+  return `/pacientes/${uuid}`;
 }
 
 // ── Pure functions for hamburger menu logic (exported for PBT) ───────────────
@@ -66,6 +67,7 @@ export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, clearUser } = useUser();
+
 
   // ── Global search state ──────────────────────────────────────────────────
   const [query, setQuery] = useState("");
@@ -128,7 +130,7 @@ export default function Navbar() {
   }, []);
 
   const handleSelectSugerencia = (paciente: PacienteSugerencia) => {
-    router.push(buildPacienteUrl(paciente.id));
+    router.push(buildPacienteUrl(paciente.uuid));
     setAbierto(false);
     setQuery("");
     setSugerencias([]);
@@ -138,7 +140,7 @@ export default function Navbar() {
   const logout = () => {
     clearSession();
     clearUser();
-    router.push("/login");
+    window.location.href = "/login?clear_session=1";
   };
 
   // ── Mobile hamburger menu state ──────────────────────────────────────────
@@ -162,6 +164,11 @@ export default function Navbar() {
   const displayName = user?.first_name
     ? `${user.first_name} ${user.last_name}`.trim()
     : user?.username ?? "";
+
+  // No renderizar en pantallas de autenticación
+  if (pathname === "/login" || pathname === "/registro") {
+    return null;
+  }
 
   return (
     <header className="border-b border-slate-200 bg-white shadow-sm sticky top-0 z-50">

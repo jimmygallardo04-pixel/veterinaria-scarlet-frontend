@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { saveTokens } from "@/lib/session";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,20 +22,20 @@ export default function LoginPage() {
     try {
       setLoading(true);
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login/`, {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
 
       if (!res.ok) {
-        toast.error("Credenciales inválidas");
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Error al iniciar sesión");
         return;
       }
 
-      const data = await res.json();
-      saveTokens(data.access, data.refresh);
       router.push("/dashboard");
+      router.refresh(); // Forzamos refresh para asegurar que los Server Components lean la cookie nueva
     } catch {
       toast.error("Error de conexión. Intenta nuevamente.");
     } finally {

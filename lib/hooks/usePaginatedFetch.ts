@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import useSWR from "swr";
 import { toast } from "sonner";
-import { apiFetch, type PaginatedResponse } from "@/lib/api";
+import { swrFetcher, type PaginatedResponse } from "@/lib/api";
 
 export type PaginationState = {
   currentPage: number;
@@ -20,95 +21,61 @@ type UsePaginatedFetchResult<T> = {
 };
 
 /**
- * Hook genérico para cargar listas paginadas desde la API.
- *
- * Elimina el boilerplate repetido en pacientes, tutores, fichas y citas:
- * - Estado de loading
- * - Estado de paginación (currentPage, totalCount, next, previous)
- * - Recarga automática al cambiar de página o filtros
- * - Manejo de errores con toast
- *
- * @param endpoint     Ruta base de la API, ej: "/tutores/"
- * @param errorMessage Mensaje de toast en caso de error HTTP
- * @param params       Query params adicionales (filtros). Se aplican junto con ?page=n.
- *                     Cuando cambian, la página se resetea a 1 automáticamente.
- *
- * @example
- * // Sin filtros
- * const { items, loading, pagination, setPage, reload } = usePaginatedFetch<Tutor>("/tutores/");
- *
- * // Con filtros dinámicos
- * const { items } = usePaginatedFetch<Cita>("/citas/", "Error cargando citas", { estado: "pendiente" });
+ * Hook genérico para cargar listas paginadas desde la API usando SWR.
  */
 export function usePaginatedFetch<T>(
   endpoint: string,
   errorMessage = "Error cargando datos",
   params: Record<string, string> = {}
 ): UsePaginatedFetchResult<T> {
-  const [items, setItems] = useState<T[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState<PaginationState>({
-    currentPage: 1,
-    totalCount: 0,
-    next: null,
-    previous: null,
-  });
+  const [currentPage, setCurrentPage] = useState(1);
 
-  // Serializar params para detectar cambios en el useEffect
+  // Serializar params para detectar cambios
   const paramsKey = JSON.stringify(params);
   const prevParamsKey = useRef(paramsKey);
 
-  const fetchPage = useCallback(
-    async (page: number, extraParams: Record<string, string> = {}) => {
-      try {
-        setLoading(true);
-
-        const query = new URLSearchParams({ page: String(page), ...extraParams });
-        const res = await apiFetch(`${endpoint}?${query.toString()}`);
-
-        if (!res.ok) {
-          toast.error(errorMessage);
-          return;
-        }
-
-        const data: PaginatedResponse<T> = await res.json();
-        setItems(data.results);
-        setPagination({
-          currentPage: page,
-          totalCount: data.count,
-          next: data.next,
-          previous: data.previous,
-        });
-      } catch {
-        toast.error("Error de conexión");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [endpoint, errorMessage]
-  );
-
   // Resetear a página 1 cuando cambian los filtros
   useEffect(() => {
-    const currentParamsKey = JSON.stringify(params);
-    if (prevParamsKey.current !== currentParamsKey) {
-      prevParamsKey.current = currentParamsKey;
-      setPagination((prev) => ({ ...prev, currentPage: 1 }));
-      return;
+    if (prevParamsKey.current !== paramsKey) {
+      prevParamsKey.current = paramsKey;
+      setCurrentPage(1);
     }
-    fetchPage(pagination.currentPage, params);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagination.currentPage, paramsKey]);
+  }, [paramsKey]);
+
+  // Construir query string
+  const query = new URLSearchParams({ page: String(currentPage), ...params });
+  const url = `${endpoint}?${query.toString()}`;
+
+  const { data, isLoading, isValidating, mutate } = useSWR<PaginatedResponse<T>>(
+    url,
+    swrFetcher,
+    {
+      onError: () => toast.error(errorMessage),
+      revalidateOnFocus: true,
+    }
+  );
 
   const setPage = useCallback((page: number) => {
     const safePage = Number.isInteger(page) && page >= 1 ? page : 1;
-    setPagination((prev) => ({ ...prev, currentPage: safePage }));
+    setCurrentPage(safePage);
   }, []);
 
-  const reload = useCallback(() => {
-    fetchPage(pagination.currentPage, params);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchPage, pagination.currentPage, paramsKey]);
+  const pagination: PaginationState = useMemo(() => ({
+    currentPage,
+    totalCount: data?.count ?? 0,
+    next: data?.next ?? null,
+    previous: data?.previous ?? null,
+  }), [data, currentPage]);
 
-  return { items, loading, pagination, setPage, reload };
+  const reload = useCallback(() => {
+    mutate();
+  }, [mutate]);
+
+  return {
+    items: data?.results ?? [],
+    loading: isLoading || (isValidating && !data),
+    pagination,
+    setPage,
+    reload,
+  };
 }

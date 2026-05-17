@@ -8,6 +8,7 @@ type Paciente = {
   raza?: string | null;
   fecha_nacimiento?: string | null;
   color?: string | null;
+  chip?: string | null;
   esterilizado?: boolean;
 };
 
@@ -129,6 +130,9 @@ export function buildPdfContent(ficha: FichaDetalle): string[] {
   lines.push(`Paciente: ${ficha.paciente_nombre}`);
   lines.push(`Especie: ${ficha.especie_nombre}`);
   lines.push(`Tutor: ${ficha.tutor_nombre}`);
+  if (ficha.paciente.chip) {
+    lines.push(`Chip: ${ficha.paciente.chip}`);
+  }
   lines.push(`Fecha de consulta: ${ficha.fecha}`);
 
   // Consultation

@@ -29,14 +29,17 @@ function useEdadActualizada(fechaNacimiento: string | null | undefined) {
 type Paciente = {
   id: number;
   nombre: string;
+  tutor: number;
   especie_nombre?: string;
   sexo_nombre?: string;
   raza?: string | null;
   color?: string | null;
+  chip?: string | null;
   fecha_nacimiento?: string | null;
   esterilizado: boolean;
   observaciones?: string | null;
   tutor_nombre: string;
+  tutor_uuid: string;
 };
 
 type Vacuna = {
@@ -49,6 +52,7 @@ type Vacuna = {
 
 type Ficha = {
   id: number;
+  uuid: string;
   fecha: string;
   motivo_consulta: string;
   diagnostico?: string | null;
@@ -57,6 +61,7 @@ type Ficha = {
 
 type Cita = {
   id: number;
+  uuid: string;
   fecha_hora: string;
   motivo: string;
   estado: string;
@@ -69,7 +74,7 @@ type Tratamiento = {
   frecuencia: string;
   fecha_inicio: string;
   fecha_fin?: string | null;
-  ficha_clinica_info?: { id: number; fecha: string; motivo_consulta: string } | null;
+  ficha_clinica_info?: { id: number; uuid: string; fecha: string; motivo_consulta: string } | null;
 };
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
@@ -93,7 +98,7 @@ const ESTADO_BADGE: Record<string, string> = {
 
 export default function DetallePacientePage() {
   const params = useParams();
-  const pacienteId = params.id as string;
+  const pacienteUuid = params.uuid as string;
 
   const [paciente, setPaciente] = useState<Paciente | null>(null);
   const [vacunas, setVacunas] = useState<Vacuna[]>([]);
@@ -145,11 +150,11 @@ export default function DetallePacientePage() {
     setLoading(true);
     try {
       const [resPaciente, resVacunas, resFichas, resCitas, resTratamientos] = await Promise.all([
-        apiFetch(`/pacientes/${pacienteId}/`),
-        apiFetch(`/vacunas/?paciente=${pacienteId}&page_size=200`),
-        apiFetch(`/fichas/?paciente=${pacienteId}&page_size=200`),
-        apiFetch(`/citas/?paciente=${pacienteId}&page_size=200`),
-        apiFetch(`/tratamientos/?paciente=${pacienteId}&page_size=200`),
+        apiFetch(`/pacientes/${pacienteUuid}/`),
+        apiFetch(`/vacunas/?paciente=${pacienteUuid}&page_size=200`),
+        apiFetch(`/fichas/?paciente=${pacienteUuid}&page_size=200`),
+        apiFetch(`/citas/?paciente=${pacienteUuid}&page_size=200`),
+        apiFetch(`/tratamientos/?paciente=${pacienteUuid}&page_size=200`),
       ]);
 
       if (resPaciente.ok) setPaciente(await resPaciente.json());
@@ -164,7 +169,7 @@ export default function DetallePacientePage() {
     }
   };
 
-  useEffect(() => { cargarTodo(); }, [pacienteId]);
+  useEffect(() => { cargarTodo(); }, [pacienteUuid]);
 
   // ── Vacunas CRUD ────────────────────────────────────────────────────────────
 
@@ -178,7 +183,7 @@ export default function DetallePacientePage() {
       const res = await apiFetch("/vacunas/", {
         method: "POST",
         body: JSON.stringify({
-          paciente: Number(pacienteId),
+          paciente: paciente?.id,
           nombre_vacuna: vacunaForm.nombre_vacuna,
           fecha_aplicacion: vacunaForm.fecha_aplicacion,
           proxima_dosis: vacunaForm.proxima_dosis || null,
@@ -188,7 +193,7 @@ export default function DetallePacientePage() {
       if (!res.ok) { toast.error("No se pudo registrar la vacuna"); return; }
       toast.success("Vacuna registrada");
       setVacunaForm(vacunaFormInicial);
-      const r = await apiFetch(`/vacunas/?paciente=${pacienteId}&page_size=200`);
+      const r = await apiFetch(`/vacunas/?paciente=${pacienteUuid}&page_size=200`);
       if (r.ok) { const d = await r.json(); setVacunas(d.results ?? d); }
     } catch {
       toast.error("Error de conexión");
@@ -236,7 +241,7 @@ export default function DetallePacientePage() {
       if (!res.ok) { toast.error("No se pudo editar la vacuna"); return; }
       toast.success("Vacuna actualizada");
       setVacunaEditando(null);
-      const r = await apiFetch(`/vacunas/?paciente=${pacienteId}&page_size=200`);
+      const r = await apiFetch(`/vacunas/?paciente=${pacienteUuid}&page_size=200`);
       if (r.ok) { const d = await r.json(); setVacunas(d.results ?? d); }
     } catch {
       toast.error("Error de conexión");
@@ -273,7 +278,7 @@ export default function DetallePacientePage() {
       if (!res.ok) { toast.error("No se pudo editar el tratamiento"); return; }
       toast.success("Tratamiento actualizado");
       setTratamientoEditando(null);
-      const r = await apiFetch(`/tratamientos/?paciente=${pacienteId}&page_size=200`);
+      const r = await apiFetch(`/tratamientos/?paciente=${pacienteUuid}&page_size=200`);
       if (r.ok) { const d = await r.json(); setTratamientos(d.results ?? d); }
     } catch {
       toast.error("Error de conexión");
@@ -325,11 +330,15 @@ export default function DetallePacientePage() {
                 {paciente.raza ? ` · ${paciente.raza}` : ""}
                 {paciente.sexo_nombre ? ` · ${paciente.sexo_nombre}` : ""}
                 {paciente.fecha_nacimiento ? ` · ${edadActualizada}` : ""}
-                {" · Tutor: "}{paciente.tutor_nombre}
+                {paciente.chip ? ` · Chip: ${paciente.chip}` : ""}
+                {" · Tutor: "}
+                <Link href={`/tutores/${paciente.tutor_uuid}`} className="text-green-700 hover:underline">
+                  {paciente.tutor_nombre}
+                </Link>
               </p>
             )}
           </div>
-          <Link href={`/fichas/nueva?paciente=${pacienteId}`} className="btn-primary">
+          <Link href={`/fichas/nueva?paciente=${pacienteUuid}`} className="btn-primary">
             + Nueva ficha
           </Link>
         </div>
@@ -344,8 +353,14 @@ export default function DetallePacientePage() {
               <div><p className="text-muted text-xs">Sexo</p><p className="font-medium truncate">{paciente.sexo_nombre ?? "-"}</p></div>
               <div><p className="text-muted text-xs">Edad</p><p className="font-medium truncate">{edadActualizada}</p></div>
               <div><p className="text-muted text-xs">Color</p><p className="font-medium truncate">{paciente.color ?? "-"}</p></div>
+              <div><p className="text-muted text-xs">Chip</p><p className="font-medium truncate">{paciente.chip ?? "-"}</p></div>
               <div><p className="text-muted text-xs">Esterilizado</p><p className="font-medium truncate">{paciente.esterilizado ? "Sí" : "No"}</p></div>
-              <div className="col-span-2 sm:col-span-3 lg:col-span-2"><p className="text-muted text-xs">Tutor</p><p className="font-medium truncate">{paciente.tutor_nombre}</p></div>
+              <div className="col-span-2 sm:col-span-3 lg:col-span-2">
+                <p className="text-muted text-xs">Tutor</p>
+                <Link href={`/tutores/${paciente.tutor_uuid}`} className="font-medium text-green-700 hover:underline truncate block">
+                  {paciente.tutor_nombre}
+                </Link>
+              </div>
             </div>
             {paciente.observaciones && (
               <p className="mt-3 text-sm text-slate-600 border-t border-slate-100 pt-3">{paciente.observaciones}</p>
@@ -355,16 +370,16 @@ export default function DetallePacientePage() {
 
         {/* Acciones rápidas */}
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <Link href={`/fichas/nueva?paciente=${pacienteId}`} className="btn-primary text-sm">
+          <Link href={`/fichas/nueva?paciente=${pacienteUuid}`} className="btn-primary text-sm">
             + Nueva ficha
           </Link>
-          <Link href={`/vacunas/nueva?paciente=${pacienteId}`} className="btn-secondary text-sm">
+          <Link href={`/vacunas/nueva?paciente=${pacienteUuid}`} className="btn-secondary text-sm">
             + Vacuna
           </Link>
-          <Link href={`/tratamientos/nuevo?paciente=${pacienteId}`} className="btn-secondary text-sm">
+          <Link href={`/tratamientos/nuevo?paciente=${pacienteUuid}`} className="btn-secondary text-sm">
             + Tratamiento
           </Link>
-          <Link href={`/archivos/nuevo?paciente=${pacienteId}`} className="btn-secondary text-sm">
+          <Link href={`/archivos/nuevo?paciente=${pacienteUuid}`} className="btn-secondary text-sm">
             + Documento
           </Link>
         </div>
@@ -523,7 +538,7 @@ export default function DetallePacientePage() {
               {fichas.length === 0 ? (
                 <div className="card text-center py-8">
                   <p className="text-muted mb-3">Sin fichas clínicas.</p>
-                  <Link href={`/fichas/nueva?paciente=${pacienteId}`} className="btn-primary">
+                  <Link href={`/fichas/nueva?paciente=${pacienteUuid}`} className="btn-primary">
                     Crear primera ficha
                   </Link>
                 </div>
@@ -531,7 +546,7 @@ export default function DetallePacientePage() {
                 fichas.map((f) => (
                   <Link
                     key={f.id}
-                    href={`/fichas/${f.id}`}
+                    href={`/fichas/${f.uuid}`}
                     className="card flex items-center justify-between gap-4 hover:shadow-md transition-shadow"
                   >
                     <div>
@@ -567,7 +582,7 @@ export default function DetallePacientePage() {
                     </div>
                     {c.estado === "pendiente" && (
                       <Link
-                        href={`/fichas/nueva?paciente=${pacienteId}&cita=${c.id}`}
+                        href={`/fichas/nueva?paciente=${pacienteUuid}&cita=${c.uuid}`}
                         className="btn-primary shrink-0"
                       >
                         Atender
@@ -585,7 +600,7 @@ export default function DetallePacientePage() {
               {tratamientos.length === 0 ? (
                 <div className="card text-center py-8">
                   <p className="text-muted mb-3">Sin tratamientos registrados.</p>
-                  <Link href={`/tratamientos/nuevo?paciente=${pacienteId}`} className="btn-primary">
+                  <Link href={`/tratamientos/nuevo?paciente=${pacienteUuid}`} className="btn-primary">
                     Agregar tratamiento
                   </Link>
                 </div>
@@ -600,8 +615,8 @@ export default function DetallePacientePage() {
                             <p className="font-semibold text-slate-900">{t.medicamento}</p>
                             {activo && <span className="badge-green">Activo</span>}
                             {t.ficha_clinica_info && (
-                              <Link
-                                href={`/fichas/${t.ficha_clinica_info.id}`}
+                            <Link
+                              href={`/fichas/${t.ficha_clinica_info.uuid}`}
                                 className="badge-blue hover:underline"
                               >
                                 Ficha {new Date(t.ficha_clinica_info.fecha).toLocaleDateString()}
@@ -691,6 +706,7 @@ export default function DetallePacientePage() {
         message="¿Estás seguro de que quieres eliminar esta vacuna?"
         confirmLabel="Eliminar"
         danger
+        requireKeyword="ELIMINAR"
         onConfirm={eliminarVacuna}
         onCancel={() => { setConfirmOpen(false); setVacunaAEliminar(null); }}
       />
@@ -701,6 +717,7 @@ export default function DetallePacientePage() {
         message="¿Estás seguro de que quieres eliminar este tratamiento?"
         confirmLabel="Eliminar"
         danger
+        requireKeyword="ELIMINAR"
         onConfirm={eliminarTratamiento}
         onCancel={() => { setConfirmTratamiento(false); setTratamientoAEliminar(null); }}
       />

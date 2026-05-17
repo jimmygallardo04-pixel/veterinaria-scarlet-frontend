@@ -37,18 +37,6 @@ export default function ArchivosModal({
   const [guardando, setGuardando] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
-  useEffect(() => {
-    if (open) {
-      cargarTipos();
-      setForm({
-        tipo: "",
-        archivo: null,
-        fecha: new Date().toISOString().split("T")[0],
-        observaciones: "",
-      });
-    }
-  }, [open]);
-
   const cargarTipos = async () => {
     try {
       const res = await apiFetch("/tipos-archivo/?page_size=100");
@@ -60,6 +48,18 @@ export default function ArchivosModal({
       toast.error("Error cargando tipos de archivo");
     }
   };
+
+  useEffect(() => {
+    if (open) {
+      cargarTipos();
+      setForm({
+        tipo: "",
+        archivo: null,
+        fecha: new Date().toISOString().split("T")[0],
+        observaciones: "",
+      });
+    }
+  }, [open]);
 
   const guardarArchivo = async () => {
     if (!form.tipo || !form.archivo || !form.fecha) {
@@ -147,8 +147,18 @@ export default function ArchivosModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-        <h2 className="text-lg font-semibold text-slate-900 mb-4">Agregar Documento</h2>
+      <div className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+        <button
+          onClick={onClose}
+          className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 focus:outline-none"
+          aria-label="Cerrar"
+        >
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        <h2 className="text-lg font-semibold text-slate-900 mb-4">Subir Archivo o Imagen</h2>
 
         <div className="space-y-3 mb-6">
           <div>

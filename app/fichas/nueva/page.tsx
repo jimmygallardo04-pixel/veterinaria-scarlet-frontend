@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
@@ -9,10 +9,12 @@ import VacunaModal from "@/app/components/modals/VacunaModal";
 import TratamientoModal from "@/app/components/modals/TratamientoModal";
 import ArchivosModal from "@/app/components/modals/ArchivosModal";
 import CitaModal from "@/app/components/modals/CitaModal";
+import SearchableSelect, { type SearchableOption } from "@/app/components/SearchableSelect";
 import { formatEdad } from "@/lib/utils";
 
 type Paciente = {
   id: number;
+  uuid: string;
   nombre: string;
   tutor_nombre: string;
   especie_nombre?: string;
@@ -120,7 +122,7 @@ export default function NuevaFichaPage() {
       const res = await apiFetch("/fichas/", {
         method: "POST",
         body: JSON.stringify({
-          paciente: Number(form.paciente),
+          paciente: pacienteSeleccionado?.id,
           fecha: fechaISO,
           motivo_consulta: form.motivo_consulta,
           anamnesis: form.anamnesis || null,
@@ -163,8 +165,18 @@ export default function NuevaFichaPage() {
     }
   };
 
-  const pacienteSeleccionado = pacientes.find((p) => String(p.id) === form.paciente);
-  const pacienteId = form.paciente ? Number(form.paciente) : null;
+  // Convertir pacientes a formato SearchableOption (usar UUID como identificador)
+  const pacientesOptions: SearchableOption[] = useMemo(() =>
+    pacientes.map((p) => ({
+      id: p.uuid,
+      nombre: p.nombre,
+      descripcion: `${p.especie_nombre ?? "Sin especie"} · Tutor: ${p.tutor_nombre}`,
+    })),
+    [pacientes]
+  );
+
+  const pacienteSeleccionado = pacientes.find((p) => p.uuid === form.paciente);
+  const pacienteId = pacienteSeleccionado?.id ?? null;
 
   // View: Ficha creada - mostrar opciones de agregar sub-recursos
   if (fichaCreada && fichaId) {
@@ -235,7 +247,7 @@ export default function NuevaFichaPage() {
         <TratamientoModal
           open={tratamientoModalOpen}
           pacienteId={pacienteId}
-          fichaId={fichaId}
+          fichaId={fichaId ?? null}
           onClose={() => setTratamientoModalOpen(false)}
         />
         <ArchivosModal
@@ -267,17 +279,16 @@ export default function NuevaFichaPage() {
         <section className="card">
           <h2 className="subtitle mb-4">Paciente</h2>
 
-          <select
-            className="input w-full"
+          <SearchableSelect
+            options={pacientesOptions}
             value={form.paciente}
-            onChange={(e) => {
-              const nuevoPacienteId = e.target.value;
-              setForm({ ...form, paciente: nuevoPacienteId });
+            onChange={(value) => {
+              setForm({ ...form, paciente: value });
 
               // Actualizar la URL con el nuevo paciente
-              if (nuevoPacienteId) {
+              if (value) {
                 const newUrl = new URL(window.location.href);
-                newUrl.searchParams.set('paciente', nuevoPacienteId);
+                newUrl.searchParams.set('paciente', value);
                 if (citaParam) {
                   newUrl.searchParams.set('cita', citaParam);
                 }
@@ -292,14 +303,18 @@ export default function NuevaFichaPage() {
                 window.history.replaceState({}, '', newUrl.toString());
               }
             }}
-          >
-            <option value="">Seleccionar paciente *</option>
-            {pacientes.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nombre} · {p.especie_nombre ?? "Sin especie"} · Tutor: {p.tutor_nombre}
-              </option>
-            ))}
-          </select>
+            placeholder="Buscar paciente por nombre o tutor..."
+            emptyMessage="No se encontraron pacientes"
+            label="Paciente *"
+            required
+            searchFields={["nombre", "descripcion"]}
+            renderOption={(option) => (
+              <div className="flex flex-col">
+                <span className="font-medium text-slate-900">{option.nombre}</span>
+                <span className="text-sm text-slate-500">{option.descripcion}</span>
+              </div>
+            )}
+          />
 
           {pacienteSeleccionado && (
             <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm md:grid-cols-4">

@@ -15,39 +15,57 @@ export type Opcion = {
 
 // ─── Entidades principales ────────────────────────────────────────────────────
 
+export type PacienteInfo = {
+  id: number;
+  uuid: string;
+  nombre: string;
+  especie_nombre?: string | null;
+};
+
 export type Tutor = {
   id: number;
+  uuid: string;
   nombre: string;
   rut?: string | null;
   telefono: string;
   email?: string | null;
   direccion?: string | null;
+  activo: boolean;
+  pacientes_info?: PacienteInfo[];
 };
 
 export type Paciente = {
   id: number;
+  uuid: string;
   nombre: string;
   tutor: number;
+  tutor_uuid: string;
+  tutor_nombre: string;
   especie: number;
   sexo?: number | null;
-  tutor_nombre: string;
   especie_nombre?: string | null;
   sexo_nombre?: string | null;
   raza?: string | null;
   fecha_nacimiento?: string | null;
   color?: string | null;
   esterilizado: boolean;
+  chip?: string | null;
   observaciones?: string | null;
+  activo: boolean;
 };
 
 /** Versión reducida de Paciente usada en sugerencias del buscador global. */
-export type PacienteSugerencia = Pick<Paciente, "id" | "nombre" | "especie_nombre" | "tutor_nombre">;
+export type PacienteSugerencia = Pick<Paciente, "id" | "uuid" | "nombre" | "especie_nombre" | "tutor_nombre">;
 
 export type EstadoCita = "pendiente" | "completada" | "cancelada";
 
 export type Cita = {
   id: number;
+  uuid: string;
   paciente: number;
+  paciente_uuid: string;
+  tutor: number;
+  tutor_uuid: string;
   paciente_nombre: string;
   tutor_nombre: string;
   fecha_hora: string;
@@ -58,7 +76,9 @@ export type Cita = {
 
 export type FichaClinica = {
   id: number;
+  uuid: string;
   paciente: number;
+  paciente_uuid: string;
   paciente_nombre: string;
   fecha: string;
   motivo_consulta: string;
@@ -70,7 +90,9 @@ export type FichaClinica = {
 
 export type Vacuna = {
   id: number;
+  uuid: string;
   paciente: number;
+  paciente_uuid: string;
   paciente_nombre: string;
   nombre_vacuna: string;
   fecha_aplicacion: string;
@@ -80,7 +102,9 @@ export type Vacuna = {
 
 export type Tratamiento = {
   id: number;
+  uuid: string;
   paciente: number;
+  paciente_uuid: string;
   paciente_nombre: string;
   medicamento: string;
   dosis: string;
@@ -92,7 +116,9 @@ export type Tratamiento = {
 
 export type ArchivoDocumento = {
   id: number;
+  uuid: string;
   paciente: number;
+  paciente_uuid: string;
   paciente_nombre: string;
   tipo: number;
   tipo_nombre: string;

@@ -15,7 +15,9 @@ type Resumen = {
 
 type Vacuna = {
   id: number;
+  uuid: string;
   paciente: number;
+  paciente_uuid: string;
   paciente_nombre: string;
   nombre_vacuna: string;
   fecha_aplicacion: string;
@@ -25,7 +27,9 @@ type Vacuna = {
 
 type Tratamiento = {
   id: number;
+  uuid: string;
   paciente: number;
+  paciente_uuid: string;
   paciente_nombre: string;
   medicamento: string;
   dosis: string;
@@ -44,16 +48,16 @@ type AlertasResponse = {
   tratamientos_activos: Tratamiento[];
 };
 
-function AccionesPaciente({ pacienteId }: { pacienteId: number }) {
+function AccionesPaciente({ pacienteUuid }: { pacienteUuid: string }) {
   return (
     <div className="mt-3 flex flex-wrap gap-2">
-      <Link href={`/vacunas/nueva?paciente=${pacienteId}`} className="btn-primary">
+      <Link href={`/vacunas/nueva?paciente=${pacienteUuid}`} className="btn-primary">
         Registrar vacuna
       </Link>
-      <Link href={`/fichas/nueva?paciente=${pacienteId}`} className="btn-secondary">
+      <Link href={`/fichas/nueva?paciente=${pacienteUuid}`} className="btn-secondary">
         Nueva ficha
       </Link>
-      <Link href={`/pacientes/${pacienteId}`} className="btn-secondary">
+      <Link href={`/pacientes/${pacienteUuid}`} className="btn-secondary">
         Ver paciente
       </Link>
     </div>
@@ -69,7 +73,11 @@ export default function AlertasPage() {
       try {
         setLoading(true);
         const res = await apiFetch("/alertas/");
-        if (!res.ok) { toast.error("No se pudieron cargar las alertas"); return; }
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          toast.error(err.detail || "No se pudieron cargar las alertas");
+          return;
+        }
         setData(await res.json());
       } catch {
         toast.error("Error de conexión");
@@ -139,7 +147,7 @@ export default function AlertasPage() {
                       <p className="text-sm text-red-700">Paciente: {v.paciente_nombre}</p>
                       <p className="text-sm text-red-700">Próxima dosis: {v.proxima_dosis || "-"}</p>
                       {v.observaciones && <p className="text-sm text-red-600 mt-1">{v.observaciones}</p>}
-                      <AccionesPaciente pacienteId={v.paciente} />
+                      <AccionesPaciente pacienteUuid={v.paciente_uuid} />
                     </div>
                   ))}
                 </div>
@@ -164,7 +172,7 @@ export default function AlertasPage() {
                       <p className="text-sm text-yellow-700">Paciente: {v.paciente_nombre}</p>
                       <p className="text-sm text-yellow-700">Próxima dosis: {v.proxima_dosis || "-"}</p>
                       {v.observaciones && <p className="text-sm text-yellow-600 mt-1">{v.observaciones}</p>}
-                      <AccionesPaciente pacienteId={v.paciente} />
+                      <AccionesPaciente pacienteUuid={v.paciente_uuid} />
                     </div>
                   ))}
                 </div>
@@ -193,10 +201,10 @@ export default function AlertasPage() {
                       </p>
                       {t.indicaciones && <p className="text-sm text-green-600 mt-1">{t.indicaciones}</p>}
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <Link href={`/fichas/nueva?paciente=${t.paciente}`} className="btn-primary">
+                        <Link href={`/fichas/nueva?paciente=${t.paciente_uuid}`} className="btn-primary">
                           Nueva ficha
                         </Link>
-                        <Link href={`/pacientes/${t.paciente}`} className="btn-secondary">
+                        <Link href={`/pacientes/${t.paciente_uuid}`} className="btn-secondary">
                           Ver paciente
                         </Link>
                       </div>

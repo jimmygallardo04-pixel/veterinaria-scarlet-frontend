@@ -1,13 +1,8 @@
-"use client";
-
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetch, type PaginatedResponse } from "@/lib/api";
 import { formatFechaHora } from "@/lib/utils";
-import type { Cita, Resumen } from "@/lib/types";
-import { DASHBOARD_CITAS_LIMIT, DASHBOARD_CITAS_PAGE_SIZE } from "@/lib/constants";
-
-// ─── Constantes ───────────────────────────────────────────────────────────────
+import type { Cita, Resumen, Paciente } from "@/lib/types";
+import DashboardCharts from "./components/DashboardCharts";
 
 const ACCESOS = [
   { href: "/pacientes",     icon: "🐾", label: "Pacientes",      desc: "Ver, crear y gestionar pacientes" },
@@ -60,38 +55,75 @@ function StatCard({
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export default function DashboardPage() {
-  const [resumen, setResumen] = useState<Resumen | null>(null);
-  const [citasPendientes, setCitasPendientes] = useState<Cita[]>([]);
-  const [loading, setLoading] = useState(true);
+export default async function DashboardPage() {
+  let resumen: Resumen | null = null;
+  let citasPendientes: Cita[] = [];
+  
+  // Datos para gráficos
+  let dataCitasGrafico: { fecha: string; citas: number }[] = [];
+  let dataEspeciesGrafico: { name: string; value: number }[] = [];
 
-  useEffect(() => {
-    const cargar = async () => {
-      try {
-        const [resAlertas, resCitas] = await Promise.all([
-          apiFetch("/alertas/"),
-          apiFetch("/citas/?page_size=20"),
-        ]);
+  try {
+    const [resAlertas, resCitas, resPacientes] = await Promise.all([
+      apiFetch("/alertas/"),
+      apiFetch("/citas/?page_size=500"),
+      apiFetch("/pacientes/?page_size=500"),
+    ]);
 
-        if (resAlertas.ok) {
-          const data = await resAlertas.json();
-          setResumen(data.resumen);
+    if (resAlertas.ok) {
+      const data = await resAlertas.json();
+      resumen = data.resumen;
+    }
+
+    if (resCitas.ok) {
+      const data: PaginatedResponse<Cita> = await resCitas.json();
+      
+      // Extraer próximas 5 citas pendientes
+      citasPendientes = data.results
+        .filter((c) => c.estado === "pendiente")
+        .sort((a, b) => new Date(a.fecha_hora).getTime() - new Date(b.fecha_hora).getTime())
+        .slice(0, 5);
+        
+      // Extraer datos para el gráfico de citas (últimos 30 días)
+      const hace30Dias = new Date();
+      hace30Dias.setDate(hace30Dias.getDate() - 30);
+      
+      const conteoCitas: Record<string, number> = {};
+      data.results.forEach((c) => {
+        const fecha = new Date(c.fecha_hora);
+        if (fecha >= hace30Dias) {
+          // Formato "DD/MM"
+          const key = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}`;
+          conteoCitas[key] = (conteoCitas[key] || 0) + 1;
         }
+      });
+      
+      // Convertir a array y ordenar cronológicamente
+      dataCitasGrafico = Object.entries(conteoCitas)
+        .map(([fecha, citas]) => ({ fecha, citas }))
+        .sort((a, b) => {
+          const [dayA, monthA] = a.fecha.split("/");
+          const [dayB, monthB] = b.fecha.split("/");
+          return new Date(2025, parseInt(monthA)-1, parseInt(dayA)).getTime() - new Date(2025, parseInt(monthB)-1, parseInt(dayB)).getTime();
+        });
+    }
 
-        if (resCitas.ok) {
-          const data: PaginatedResponse<Cita> = await resCitas.json();
-          const proximas = data.results
-            .filter((c) => c.estado === "pendiente")
-            .sort((a, b) => new Date(a.fecha_hora).getTime() - new Date(b.fecha_hora).getTime())
-            .slice(0, 5);
-          setCitasPendientes(proximas);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-    cargar();
-  }, []);
+    if (resPacientes.ok) {
+      const data: PaginatedResponse<Paciente> = await resPacientes.json();
+      const conteoEspecies: Record<string, number> = {};
+      
+      data.results.forEach((p) => {
+        const esp = p.especie_nombre || "Desconocido";
+        conteoEspecies[esp] = (conteoEspecies[esp] || 0) + 1;
+      });
+      
+      dataEspeciesGrafico = Object.entries(conteoEspecies)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value); // Mayor a menor
+    }
+  } catch (err) {
+    console.error("Error cargando dashboard SSR:", err);
+  }
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 md:p-8">
@@ -109,17 +141,16 @@ export default function DashboardPage() {
             <Link href="/alertas" className="btn-secondary text-sm">Ver detalle</Link>
           </div>
 
-          {loading ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {[1, 2, 3].map((i) => <div key={i} className="card skeleton h-28" />)}
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <StatCard label="Vacunas vencidas"    value={resumen?.vacunas_vencidas ?? 0}    color="red"    href="/alertas" sub="Requieren atención inmediata" />
-              <StatCard label="Próximas vacunas"    value={resumen?.vacunas_proximas ?? 0}    color="yellow" href="/alertas" sub="Vencen dentro de 30 días" />
-              <StatCard label="Tratamientos activos" value={resumen?.tratamientos_activos ?? 0} color="green"  href="/alertas" sub="Pacientes en tratamiento" />
-            </div>
-          )}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <StatCard label="Vacunas vencidas"    value={resumen?.vacunas_vencidas ?? 0}    color="red"    href="/alertas" sub="Requieren atención inmediata" />
+            <StatCard label="Próximas vacunas"    value={resumen?.vacunas_proximas ?? 0}    color="yellow" href="/alertas" sub="Vencen dentro de 30 días" />
+            <StatCard label="Tratamientos activos" value={resumen?.tratamientos_activos ?? 0} color="green"  href="/alertas" sub="Pacientes en tratamiento" />
+          </div>
+        </section>
+
+        {/* Módulo de Analíticas */}
+        <section>
+          <DashboardCharts dataCitas={dataCitasGrafico} dataEspecies={dataEspeciesGrafico} />
         </section>
 
         {/* Próximas citas */}
@@ -129,11 +160,7 @@ export default function DashboardPage() {
             <Link href="/citas" className="btn-secondary text-sm">Ver todas</Link>
           </div>
 
-          {loading ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map((i) => <div key={i} className="card skeleton h-16" />)}
-            </div>
-          ) : citasPendientes.length === 0 ? (
+          {citasPendientes.length === 0 ? (
             <div className="card text-center py-8">
               <p className="text-muted">No hay citas pendientes.</p>
               <Link href="/citas/nueva" className="btn-primary mt-4 inline-flex">Agendar cita</Link>
@@ -146,7 +173,7 @@ export default function DashboardPage() {
                     <p className="font-semibold text-slate-900 truncate">{cita.paciente_nombre}</p>
                     <p className="text-muted text-sm">{formatFechaHora(cita.fecha_hora)} · {cita.motivo}</p>
                   </div>
-                  <Link href={`/fichas/nueva?paciente=${cita.paciente}&cita=${cita.id}`} className="btn-primary shrink-0 text-sm w-full sm:w-auto text-center">
+                  <Link href={`/fichas/nueva?paciente=${cita.paciente}&cita=${cita.uuid}`} className="btn-primary shrink-0 text-sm w-full sm:w-auto text-center">
                     Atender
                   </Link>
                 </div>

@@ -46,7 +46,7 @@ const formInicial: FichaForm = {
 export default function EditarFichaPage() {
   const params = useParams();
   const router = useRouter();
-  const fichaId = params.id as string;
+  const fichaId = params.uuid as string;
 
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [form, setForm] = useState<FichaForm>(formInicial);

@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import Navbar from "./Navbar";
-import InactivityWarning from "./InactivityWarning";
-import { useInactivityTimer } from "@/lib/hooks/useInactivityTimer";
+import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api";
+import { clearSession, getCachedUser } from "@/lib/session";
+import type { Usuario } from "@/lib/types";
 
+/**
+ * Loader que se muestra mientras se verifica la sesión.
+ */
 function SessionLoader() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -17,150 +20,72 @@ function SessionLoader() {
   );
 }
 
-function clearSession() {
-  sessionStorage.removeItem("access");
-  sessionStorage.removeItem("refresh");
-  sessionStorage.removeItem("user_me");
-  localStorage.removeItem("access");
-  localStorage.removeItem("refresh");
-}
-
-async function tryRefreshToken(): Promise<string | null> {
-  const refresh = sessionStorage.getItem("refresh");
-  if (!refresh) return null;
-
-  try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/refresh/`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh }),
-      }
-    );
-
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    sessionStorage.setItem("access", data.access);
-    return data.access;
-  } catch {
-    return null;
-  }
-}
-
+/**
+ * AuthGuard que valida la sesión en cliente.
+ * El middleware.ts maneja la protección server-side.
+ *
+ * Responsabilidades:
+ * - Verifica sesión al montar (usa caché o API)
+ * - Redirige si la sesión no es válida
+ * - Proporciona feedback visual durante carga
+ *
+ * Notas:
+ * - El middleware ya protege rutas privadas en servidor
+ * - Este componente es una capa adicional de seguridad en cliente
+ * - No intenta redirigir autenticados a dashboard (middleware lo hace)
+ */
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
-
   const [checking, setChecking] = useState(true);
   const [authorized, setAuthorized] = useState(false);
-
-  // Rutas que no requieren autenticación
-  const PUBLIC_PATHS = ["/login", "/registro"];
-  const isPublicPage = PUBLIC_PATHS.includes(pathname);
-
-  // Inactividad timeout: 15 minutos, advertencia en 2 minutos
-  const { isWarningShown, extendSession } = useInactivityTimer({
-    inactivityTimeoutMs: 15 * 60 * 1000,
-    warningTimeMs: 2 * 60 * 1000,
-    enabled: authorized && !isPublicPage,
-    onTimeout: () => {
-      // Logout automático
-      handleLogout();
-    },
-  });
-
-  const handleLogout = () => {
-    clearSession();
-    setAuthorized(false);
-    router.replace("/login");
-  };
+  const [user, setUser] = useState<Usuario | null>(null);
 
   useEffect(() => {
-    const validarToken = async () => {
-      setChecking(true);
-
-      let token = sessionStorage.getItem("access");
-
-      // Sin token → intentar refresh antes de redirigir
-      if (!token) {
-        token = await tryRefreshToken();
-      }
-
-      if (!token) {
-        setAuthorized(false);
-        setChecking(false);
-        if (!isPublicPage) router.replace("/login");
-        return;
-      }
-
+    const validateSession = async () => {
       try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/pacientes/`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-
-        if (res.status === 401) {
-          // Access expirado → intentar refresh
-          const newToken = await tryRefreshToken();
-
-          if (!newToken) {
-            clearSession();
-            setAuthorized(false);
-            if (!isPublicPage) router.replace("/login");
-            return;
-          }
-
-          // Revalidar con nuevo token
-          const retry = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/pacientes/`,
-            { headers: { Authorization: `Bearer ${newToken}` } }
-          );
-
-          if (!retry.ok) {
-            clearSession();
-            setAuthorized(false);
-            if (!isPublicPage) router.replace("/login");
-            return;
-          }
-        } else if (!res.ok) {
-          clearSession();
-          setAuthorized(false);
-          if (!isPublicPage) router.replace("/login");
+        // Intentar obtener usuario desde caché primero
+        const cachedUser = getCachedUser<Usuario>();
+        if (cachedUser) {
+          setUser(cachedUser);
+          setAuthorized(true);
+          setChecking(false);
           return;
         }
 
+        // Verificar sesión con la API
+        const res = await apiFetch("/me/");
+
+        if (!res.ok) {
+          // Sesión inválida
+          clearSession();
+          setAuthorized(false);
+          setUser(null);
+          // El middleware redirigirá al recargar
+          setChecking(false);
+          return;
+        }
+
+        const userData: Usuario = await res.json();
+        setUser(userData);
         setAuthorized(true);
-        // Usuario ya autenticado intenta entrar a login o registro → al dashboard
-        if (isPublicPage) router.replace("/dashboard");
-      } catch {
+      } catch (error) {
+        console.error("Error validating session:", error);
         clearSession();
         setAuthorized(false);
-        if (!isPublicPage) router.replace("/login");
+        setUser(null);
       } finally {
         setChecking(false);
       }
     };
 
-    validarToken();
-  }, [pathname, router, isPublicPage]);
+    validateSession();
+  }, []);
 
+  // Mostrar loader mientras se verifica
   if (checking) return <SessionLoader />;
 
-  if (!authorized && !isPublicPage) return null;
+  // Si no está autorizado, no renderizar (el middleware redirigirá)
+  if (!authorized) return null;
 
-  return (
-    <>
-      {!isPublicPage && authorized && <Navbar />}
-      {children}
-      <InactivityWarning
-        open={isWarningShown}
-        onExtend={extendSession}
-        onLogout={handleLogout}
-        warningTimeMs={2 * 60 * 1000}
-      />
-    </>
-  );
+  return <>{children}</>;
 }
-

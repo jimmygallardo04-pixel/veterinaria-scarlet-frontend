@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -11,6 +11,8 @@ interface ConfirmDialogProps {
   danger?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Si se provee, requiere que el usuario escriba esta palabra exactamente antes de habilitar el botón */
+  requireKeyword?: string;
 }
 
 /**
@@ -24,6 +26,7 @@ interface ConfirmDialogProps {
  *     title="Eliminar paciente"
  *     message="Esta acción no se puede deshacer."
  *     danger
+ *     requireKeyword="ELIMINAR"
  *     onConfirm={() => { eliminar(); setOpen(false); }}
  *     onCancel={() => setOpen(false)}
  *   />
@@ -37,15 +40,27 @@ export default function ConfirmDialog({
   danger = false,
   onConfirm,
   onCancel,
+  requireKeyword,
 }: ConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  
+  const [inputValue, setInputValue] = useState("");
 
-  // Foco automático en cancelar (más seguro por defecto)
+  // Limpiar input cuando se abre/cierra
   useEffect(() => {
     if (open) {
-      setTimeout(() => cancelRef.current?.focus(), 50);
+      setInputValue("");
+      // Foco automático en el input si hay keyword, si no, en cancelar
+      setTimeout(() => {
+        if (requireKeyword) {
+          inputRef.current?.focus();
+        } else {
+          cancelRef.current?.focus();
+        }
+      }, 50);
     }
-  }, [open]);
+  }, [open, requireKeyword]);
 
   // Cerrar con Escape
   useEffect(() => {
@@ -58,6 +73,12 @@ export default function ConfirmDialog({
   }, [open, onCancel]);
 
   if (!open) return null;
+
+  const keywordMatch = requireKeyword 
+    ? inputValue.trim().toLowerCase() === requireKeyword.toLowerCase()
+    : true;
+
+  const isConfirmDisabled = requireKeyword ? !keywordMatch : false;
 
   return (
     <div
@@ -75,9 +96,33 @@ export default function ConfirmDialog({
           {title}
         </h2>
 
-        <p className="text-sm text-slate-600 mb-6">{message}</p>
+        <p className="text-sm text-slate-600 mb-4">{message}</p>
 
-        <div className="flex justify-end gap-3">
+        {requireKeyword && (
+          <div className="mb-6">
+            <label htmlFor="confirm-keyword" className="block text-sm font-medium text-slate-700 mb-1">
+              Por favor escribe <strong className="select-none">{requireKeyword}</strong> para confirmar:
+            </label>
+            <input
+              ref={inputRef}
+              id="confirm-keyword"
+              type="text"
+              className="input w-full"
+              autoComplete="off"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder={requireKeyword}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && keywordMatch) {
+                  e.preventDefault();
+                  onConfirm();
+                }
+              }}
+            />
+          </div>
+        )}
+
+        <div className={`flex justify-end gap-3 ${!requireKeyword ? "mt-6" : ""}`}>
           <button
             ref={cancelRef}
             onClick={onCancel}
@@ -88,7 +133,10 @@ export default function ConfirmDialog({
 
           <button
             onClick={onConfirm}
-            className={danger ? "btn-danger-solid" : "btn-primary"}
+            disabled={isConfirmDisabled}
+            className={`${danger ? "btn-danger-solid" : "btn-primary"} ${
+              isConfirmDisabled ? "opacity-50 cursor-not-allowed" : ""
+            }`}
           >
             {confirmLabel}
           </button>
