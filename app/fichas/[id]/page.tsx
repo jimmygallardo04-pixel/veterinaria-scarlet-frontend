@@ -38,6 +38,7 @@ type Tratamiento = {
   fecha_inicio: string;
   fecha_fin?: string | null;
   indicaciones?: string | null;
+  ficha_clinica_info?: { id: number; fecha: string; motivo_consulta: string } | null;
 };
 
 type Archivo = {
@@ -379,12 +380,21 @@ export default function DetalleFichaPage() {
             <div className="space-y-3">
               {ficha.tratamientos.map((t) => (
                 <div key={t.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                  <p className="font-semibold text-slate-900">{t.medicamento}</p>
-                  <p className="text-muted">{t.dosis} · {t.frecuencia}</p>
-                  <p className="text-muted">
-                    {t.fecha_inicio} → {t.fecha_fin || "indefinido"}
-                  </p>
-                  {t.indicaciones && <p className="text-sm text-slate-700 mt-2">{t.indicaciones}</p>}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <p className="font-semibold text-slate-900">{t.medicamento}</p>
+                      <p className="text-muted">{t.dosis} · {t.frecuencia}</p>
+                      <p className="text-muted">
+                        {t.fecha_inicio} → {t.fecha_fin || "indefinido"}
+                      </p>
+                      {t.indicaciones && <p className="text-sm text-slate-700 mt-2">{t.indicaciones}</p>}
+                    </div>
+                    {t.ficha_clinica_info && t.ficha_clinica_info.id === parseInt(fichaId) && (
+                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex-shrink-0">
+                        Vinculado
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

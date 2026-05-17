@@ -69,6 +69,7 @@ type Tratamiento = {
   frecuencia: string;
   fecha_inicio: string;
   fecha_fin?: string | null;
+  ficha_clinica_info?: { id: number; fecha: string; motivo_consulta: string } | null;
 };
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
@@ -298,7 +299,7 @@ export default function DetallePacientePage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-slate-100 p-8">
+      <main className="min-h-screen bg-slate-100 p-4 md:p-8">
         <div className="mx-auto max-w-5xl">
           <div className="skeleton h-5 w-40 mb-6 rounded" />
           <PageSkeleton rows={4} />
@@ -308,7 +309,7 @@ export default function DetallePacientePage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <main className="min-h-screen bg-slate-100 p-4 md:p-8">
       <div className="mx-auto max-w-5xl space-y-6">
 
         {/* Header */}
@@ -337,14 +338,14 @@ export default function DetallePacientePage() {
         {paciente && (
           <section className="card">
             <h2 className="subtitle mb-4">Datos del paciente</h2>
-            <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-              <div><p className="text-muted text-xs">Especie</p><p className="font-medium">{paciente.especie_nombre ?? "-"}</p></div>
-              <div><p className="text-muted text-xs">Raza</p><p className="font-medium">{paciente.raza ?? "-"}</p></div>
-              <div><p className="text-muted text-xs">Sexo</p><p className="font-medium">{paciente.sexo_nombre ?? "-"}</p></div>
-              <div><p className="text-muted text-xs">Edad</p><p className="font-medium">{edadActualizada}</p></div>
-              <div><p className="text-muted text-xs">Color</p><p className="font-medium">{paciente.color ?? "-"}</p></div>
-              <div><p className="text-muted text-xs">Esterilizado</p><p className="font-medium">{paciente.esterilizado ? "Sí" : "No"}</p></div>
-              <div><p className="text-muted text-xs">Tutor</p><p className="font-medium">{paciente.tutor_nombre}</p></div>
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-4">
+              <div><p className="text-muted text-xs">Especie</p><p className="font-medium truncate">{paciente.especie_nombre ?? "-"}</p></div>
+              <div><p className="text-muted text-xs">Raza</p><p className="font-medium truncate">{paciente.raza ?? "-"}</p></div>
+              <div><p className="text-muted text-xs">Sexo</p><p className="font-medium truncate">{paciente.sexo_nombre ?? "-"}</p></div>
+              <div><p className="text-muted text-xs">Edad</p><p className="font-medium truncate">{edadActualizada}</p></div>
+              <div><p className="text-muted text-xs">Color</p><p className="font-medium truncate">{paciente.color ?? "-"}</p></div>
+              <div><p className="text-muted text-xs">Esterilizado</p><p className="font-medium truncate">{paciente.esterilizado ? "Sí" : "No"}</p></div>
+              <div className="col-span-2 sm:col-span-3 lg:col-span-2"><p className="text-muted text-xs">Tutor</p><p className="font-medium truncate">{paciente.tutor_nombre}</p></div>
             </div>
             {paciente.observaciones && (
               <p className="mt-3 text-sm text-slate-600 border-t border-slate-100 pt-3">{paciente.observaciones}</p>
@@ -353,17 +354,17 @@ export default function DetallePacientePage() {
         )}
 
         {/* Acciones rápidas */}
-        <div className="flex flex-wrap gap-2">
-          <Link href={`/fichas/nueva?paciente=${pacienteId}`} className="btn-primary">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <Link href={`/fichas/nueva?paciente=${pacienteId}`} className="btn-primary text-sm">
             + Nueva ficha
           </Link>
-          <Link href={`/vacunas/nueva?paciente=${pacienteId}`} className="btn-secondary">
+          <Link href={`/vacunas/nueva?paciente=${pacienteId}`} className="btn-secondary text-sm">
             + Vacuna
           </Link>
-          <Link href={`/tratamientos/nuevo?paciente=${pacienteId}`} className="btn-secondary">
+          <Link href={`/tratamientos/nuevo?paciente=${pacienteId}`} className="btn-secondary text-sm">
             + Tratamiento
           </Link>
-          <Link href={`/archivos/nuevo?paciente=${pacienteId}`} className="btn-secondary">
+          <Link href={`/archivos/nuevo?paciente=${pacienteId}`} className="btn-secondary text-sm">
             + Documento
           </Link>
         </div>
@@ -371,7 +372,7 @@ export default function DetallePacientePage() {
         {/* Tabs */}
         <div>
           {/* Tab bar */}
-          <div className="flex gap-1 border-b border-slate-200 mb-4">
+          <div className="flex gap-1 border-b border-slate-200 mb-4 overflow-x-auto">
             {TABS.map((t) => {
               const count =
                 t.id === "vacunas" ? vacunas.length :
@@ -383,14 +384,14 @@ export default function DetallePacientePage() {
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                  className={`flex items-center gap-1 px-3 md:px-4 py-2 text-xs md:text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap ${
                     tab === t.id
                       ? "border-green-600 text-green-700"
                       : "border-transparent text-slate-500 hover:text-slate-700"
                   }`}
                 >
-                  <span>{t.icon}</span>
-                  {t.label}
+                  <span className="text-sm md:text-base">{t.icon}</span>
+                  <span className="hidden sm:inline">{t.label}</span>
                   {count > 0 && (
                     <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
                       tab === t.id ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"
@@ -594,10 +595,18 @@ export default function DetallePacientePage() {
                   return (
                     <div key={t.id} className="card">
                       <div className="flex items-start justify-between gap-2">
-                        <div>
+                        <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <p className="font-semibold text-slate-900">{t.medicamento}</p>
                             {activo && <span className="badge-green">Activo</span>}
+                            {t.ficha_clinica_info && (
+                              <Link
+                                href={`/fichas/${t.ficha_clinica_info.id}`}
+                                className="badge-blue hover:underline"
+                              >
+                                Ficha {new Date(t.ficha_clinica_info.fecha).toLocaleDateString()}
+                              </Link>
+                            )}
                           </div>
                           <p className="text-muted">{t.dosis} · {t.frecuencia}</p>
                           <p className="text-muted">

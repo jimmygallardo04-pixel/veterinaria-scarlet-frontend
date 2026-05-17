@@ -53,6 +53,7 @@ export default function NuevoTratamientoPage() {
           fecha_inicio: form.fecha_inicio,
           fecha_fin: form.fecha_fin || null,
           indicaciones: form.indicaciones || null,
+          ficha_clinica: fichaParam ? Number(fichaParam) : null,
         }),
       });
 
