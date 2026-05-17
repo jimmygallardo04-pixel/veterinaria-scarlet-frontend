@@ -10,6 +10,8 @@ import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import BackButton from "@/app/components/BackButton";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
+import VacunaDetailModal from "@/app/components/modals/VacunaDetailModal";
+import TratamientoDetailModal from "@/app/components/modals/TratamientoDetailModal";
 
 const localizer = dayjsLocalizer(dayjs);
 const DnDCalendar = withDragAndDrop<CalendarEvent, object>(
@@ -28,6 +30,27 @@ type Cita = {
   estado: string;
 };
 
+type Vacuna = {
+  id: number;
+  paciente: number;
+  nombre_vacuna: string;
+  fecha_aplicacion: string;
+  proxima_dosis?: string;
+  observaciones?: string;
+};
+
+type Tratamiento = {
+  id: number;
+  paciente: number;
+  medicamento: string;
+  dosis: string;
+  frecuencia: string;
+  fecha_inicio: string;
+  fecha_fin?: string;
+  indicaciones?: string;
+  observaciones?: string;
+};
+
 type Paciente = {
   id: number;
   nombre: string;
@@ -36,11 +59,14 @@ type Paciente = {
 };
 
 type CalendarEvent = {
-  id: number;
+  id: string;
   title: string;
   start: Date;
   end: Date;
-  cita: Cita;
+  resourceType: "cita" | "vacuna" | "tratamiento";
+  cita?: Cita;
+  vacuna?: Vacuna;
+  tratamiento?: Tratamiento;
 };
 
 type CalendarView = "month" | "week" | "day" | "agenda";
@@ -57,6 +83,16 @@ export default function CalendarioCitasPage() {
 
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState<CalendarView>("month");
+
+  const [filters, setFilters] = useState({
+    citas: true,
+    vacunas: true,
+    tratamientos: true,
+  });
+
+  const [vacunaSeleccionada, setVacunaSeleccionada] = useState<Vacuna | null>(null);
+  const [tratamientoSeleccionado, setTratamientoSeleccionado] = useState<Tratamiento | null>(null);
+  const [modalDetalleAbierto, setModalDetalleAbierto] = useState(false);
 
   const [form, setForm] = useState({
     paciente: "",
@@ -86,24 +122,63 @@ export default function CalendarioCitasPage() {
     });
   };
 
+  const getVacunaEstado = (vacuna: Vacuna): "aplicada" | "proxima" | "vencida" => {
+    if (!vacuna.proxima_dosis) return "aplicada";
+    const hoy = new Date().toISOString().split("T")[0];
+    return vacuna.proxima_dosis < hoy ? "vencida" : "proxima";
+  };
+
+  const getTratamientoEstado = (tratamiento: Tratamiento): "futuro" | "activo" | "finalizado" => {
+    const hoy = new Date().toISOString().split("T")[0];
+    if (tratamiento.fecha_inicio > hoy) return "futuro";
+    if (!tratamiento.fecha_fin || tratamiento.fecha_fin >= hoy) return "activo";
+    return "finalizado";
+  };
+
   const eventStyleGetter = (evento: CalendarEvent) => {
     const solapado = haySolape(evento);
-    const estado = evento.cita.estado;
-
     let backgroundColor = "#22c55e";
     let borderColor = "#16a34a";
 
-    if (estado === "completada") {
-      backgroundColor = "#2563eb";
-      borderColor = "#1d4ed8";
+    if (evento.resourceType === "cita") {
+      const estado = evento.cita?.estado;
+      if (estado === "completada") {
+        backgroundColor = "#2563eb";
+        borderColor = "#1d4ed8";
+      } else if (estado === "cancelada") {
+        backgroundColor = "#64748b";
+        borderColor = "#475569";
+      } else {
+        backgroundColor = "#22c55e";
+        borderColor = "#16a34a";
+      }
+    } else if (evento.resourceType === "vacuna") {
+      const estado = getVacunaEstado(evento.vacuna!);
+      if (estado === "vencida") {
+        backgroundColor = "#ef4444";
+        borderColor = "#dc2626";
+      } else if (estado === "proxima") {
+        backgroundColor = "#f59e0b";
+        borderColor = "#d97706";
+      } else {
+        backgroundColor = "#9333ea";
+        borderColor = "#7e22ce";
+      }
+    } else if (evento.resourceType === "tratamiento") {
+      const estado = getTratamientoEstado(evento.tratamiento!);
+      if (estado === "futuro") {
+        backgroundColor = "#3b82f6";
+        borderColor = "#2563eb";
+      } else if (estado === "finalizado") {
+        backgroundColor = "#94a3b8";
+        borderColor = "#64748b";
+      } else {
+        backgroundColor = "#06b6d4";
+        borderColor = "#0891b2";
+      }
     }
 
-    if (estado === "cancelada") {
-      backgroundColor = "#64748b";
-      borderColor = "#475569";
-    }
-
-    if (solapado) {
+    if (solapado && evento.resourceType === "cita") {
       backgroundColor = "#f97316";
       borderColor = "#ea580c";
     }
@@ -121,15 +196,95 @@ export default function CalendarioCitasPage() {
 
   const cargarCitas = async () => {
     const res = await apiFetch("/citas/?page_size=500");
-    if (!res.ok) { toast.error("Error cargando citas"); return; }
+    if (!res.ok) { toast.error("Error cargando citas"); return []; }
 
     const json = await res.json();
     const data: Cita[] = json.results ?? json;
-    setEvents(data.map((cita) => {
+    return data.map((cita) => {
       const inicio = new Date(cita.fecha_hora);
       const fin = new Date(inicio.getTime() + 30 * 60000);
-      return { id: cita.id, title: `${cita.paciente_nombre} - ${cita.motivo}`, start: inicio, end: fin, cita };
-    }));
+      return {
+        id: `cita-${cita.id}`,
+        title: `${cita.paciente_nombre} - ${cita.motivo}`,
+        start: inicio,
+        end: fin,
+        resourceType: "cita" as const,
+        cita,
+      };
+    });
+  };
+
+  const cargarVacunas = async () => {
+    const res = await apiFetch("/vacunas/?page_size=500");
+    if (!res.ok) { toast.error("Error cargando vacunas"); return []; }
+
+    const json = await res.json();
+    const data: Vacuna[] = json.results ?? json;
+    const eventos: CalendarEvent[] = [];
+
+    data.forEach((vacuna) => {
+      const fecha = new Date(vacuna.fecha_aplicacion);
+      fecha.setHours(0, 0, 0, 0);
+      const fin = new Date(fecha);
+      fin.setHours(23, 59, 59, 999);
+
+      eventos.push({
+        id: `vacuna-${vacuna.id}`,
+        title: `💉 ${vacuna.nombre_vacuna}`,
+        start: fecha,
+        end: fin,
+        resourceType: "vacuna",
+        vacuna,
+      });
+
+      if (vacuna.proxima_dosis) {
+        const proximaFecha = new Date(vacuna.proxima_dosis);
+        proximaFecha.setHours(0, 0, 0, 0);
+        const proximaFin = new Date(proximaFecha);
+        proximaFin.setHours(23, 59, 59, 999);
+
+        eventos.push({
+          id: `vacuna-${vacuna.id}-proxima`,
+          title: `💉 Próxima dosis: ${vacuna.nombre_vacuna}`,
+          start: proximaFecha,
+          end: proximaFin,
+          resourceType: "vacuna",
+          vacuna,
+        });
+      }
+    });
+
+    return eventos;
+  };
+
+  const cargarTratamientos = async () => {
+    const res = await apiFetch("/tratamientos/?page_size=500");
+    if (!res.ok) { toast.error("Error cargando tratamientos"); return []; }
+
+    const json = await res.json();
+    const data: Tratamiento[] = json.results ?? json;
+    return data.map((tratamiento) => {
+      const inicio = new Date(tratamiento.fecha_inicio);
+      inicio.setHours(0, 0, 0, 0);
+
+      let fin: Date;
+      if (tratamiento.fecha_fin) {
+        fin = new Date(tratamiento.fecha_fin);
+        fin.setHours(23, 59, 59, 999);
+      } else {
+        fin = new Date();
+        fin.setHours(23, 59, 59, 999);
+      }
+
+      return {
+        id: `tratamiento-${tratamiento.id}`,
+        title: `💊 ${tratamiento.medicamento}`,
+        start: inicio,
+        end: fin,
+        resourceType: "tratamiento" as const,
+        tratamiento,
+      };
+    });
   };
 
   const cargarPacientes = async () => {
@@ -142,7 +297,13 @@ export default function CalendarioCitasPage() {
   const cargarDatos = async () => {
     try {
       setLoading(true);
-      await Promise.all([cargarCitas(), cargarPacientes()]);
+      const [citas, vacunas, tratamientos] = await Promise.all([
+        cargarCitas(),
+        cargarVacunas(),
+        cargarTratamientos(),
+      ]);
+      setEvents([...citas, ...vacunas, ...tratamientos]);
+      await cargarPacientes();
     } catch {
       toast.error("Error cargando calendario");
     } finally {
@@ -187,7 +348,7 @@ export default function CalendarioCitasPage() {
     toast.success("Cita creada correctamente");
     setModalOpen(false);
     limpiarForm();
-    cargarCitas();
+    cargarDatos();
   };
 
   const actualizarCita = async () => {
@@ -219,18 +380,20 @@ export default function CalendarioCitasPage() {
     toast.success("Cita actualizada correctamente");
     setModalOpen(false);
     limpiarForm();
-    cargarCitas();
+    cargarDatos();
   };
 
   const moverCita = async ({ event, start }: any) => {
+    if (event.resourceType !== "cita") return;
+    const citaId = Number(event.id.split("-")[1]);
     const fechaLocal = dayjs(start).format("YYYY-MM-DDTHH:mm:ss");
-    const res = await apiFetch(`/citas/${event.id}/`, {
+    const res = await apiFetch(`/citas/${citaId}/`, {
       method: "PATCH",
       body: JSON.stringify({ fecha_hora: fechaLocal }),
     });
     if (!res.ok) { toast.error("Error moviendo cita"); return; }
     toast.success("Cita actualizada");
-    cargarCitas();
+    cargarDatos();
   };
 
   const eliminarCita = async () => {
@@ -243,7 +406,7 @@ export default function CalendarioCitasPage() {
     toast.success("Cita eliminada correctamente");
     setModalOpen(false);
     limpiarForm();
-    cargarCitas();
+    cargarDatos();
   };
 
   useEffect(() => {
@@ -272,9 +435,96 @@ export default function CalendarioCitasPage() {
         </div>
 
         <div className="card">
+          <div className="mb-6">
+            <h3 className="font-semibold text-slate-900 mb-3">Filtros y leyenda</h3>
+
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-semibold text-muted uppercase mb-2">Citas</p>
+                <div className="flex flex-wrap gap-3">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={filters.citas}
+                      onChange={(e) => setFilters({ ...filters, citas: e.target.checked })}
+                      className="w-4 h-4"
+                    />
+                    <span className="w-3 h-3 rounded bg-green-500"></span>
+                    <span className="text-sm">Pendiente</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded bg-blue-500"></span>
+                    <span className="text-sm">Completada</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded bg-gray-500"></span>
+                    <span className="text-sm">Cancelada</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded bg-orange-500"></span>
+                    <span className="text-sm">Solapada</span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-muted uppercase mb-2">Vacunas</p>
+                <div className="flex flex-wrap gap-3">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={filters.vacunas}
+                      onChange={(e) => setFilters({ ...filters, vacunas: e.target.checked })}
+                      className="w-4 h-4"
+                    />
+                    <span className="w-3 h-3 rounded bg-purple-500"></span>
+                    <span className="text-sm">Aplicada</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded bg-amber-500"></span>
+                    <span className="text-sm">Próxima</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded bg-red-500"></span>
+                    <span className="text-sm">Vencida</span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-muted uppercase mb-2">Tratamientos</p>
+                <div className="flex flex-wrap gap-3">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={filters.tratamientos}
+                      onChange={(e) => setFilters({ ...filters, tratamientos: e.target.checked })}
+                      className="w-4 h-4"
+                    />
+                    <span className="w-3 h-3 rounded bg-blue-400"></span>
+                    <span className="text-sm">Futuro</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded bg-cyan-500"></span>
+                    <span className="text-sm">Activo</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded bg-slate-400"></span>
+                    <span className="text-sm">Finalizado</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <DnDCalendar
             localizer={localizer}
-            events={events}
+            events={events.filter((e) => {
+              if (e.resourceType === "cita" && !filters.citas) return false;
+              if (e.resourceType === "vacuna" && !filters.vacunas) return false;
+              if (e.resourceType === "tratamiento" && !filters.tratamientos) return false;
+              return true;
+            })}
             startAccessor="start"
             endAccessor="end"
             date={calendarDate}
@@ -302,20 +552,28 @@ export default function CalendarioCitasPage() {
               setModalOpen(true);
             }}
             onSelectEvent={(event: any) => {
-              setModoEdicion(true);
-              setCitaSeleccionadaId(event.id);
+              if (event.resourceType === "cita") {
+                setModoEdicion(true);
+                setCitaSeleccionadaId(event.cita.id);
 
-              setForm({
-                paciente: String(event.cita.paciente),
-                fecha_hora: dayjs(event.cita.fecha_hora).format(
-                  "YYYY-MM-DDTHH:mm"
-                ),
-                motivo: event.cita.motivo || "",
-                observaciones: event.cita.observaciones || "",
-                estado: event.cita.estado || "pendiente",
-              });
+                setForm({
+                  paciente: String(event.cita.paciente),
+                  fecha_hora: dayjs(event.cita.fecha_hora).format(
+                    "YYYY-MM-DDTHH:mm"
+                  ),
+                  motivo: event.cita.motivo || "",
+                  observaciones: event.cita.observaciones || "",
+                  estado: event.cita.estado || "pendiente",
+                });
 
-              setModalOpen(true);
+                setModalOpen(true);
+              } else if (event.resourceType === "vacuna") {
+                setVacunaSeleccionada(event.vacuna);
+                setModalDetalleAbierto(true);
+              } else if (event.resourceType === "tratamiento") {
+                setTratamientoSeleccionado(event.tratamiento);
+                setModalDetalleAbierto(true);
+              }
             }}
             style={{ height: 600 }}
             messages={{
@@ -435,6 +693,24 @@ export default function CalendarioCitasPage() {
         danger
         onConfirm={eliminarCita}
         onCancel={() => setConfirmEliminar(false)}
+      />
+
+      <VacunaDetailModal
+        vacuna={vacunaSeleccionada}
+        open={modalDetalleAbierto && !!vacunaSeleccionada}
+        onClose={() => {
+          setModalDetalleAbierto(false);
+          setVacunaSeleccionada(null);
+        }}
+      />
+
+      <TratamientoDetailModal
+        tratamiento={tratamientoSeleccionado}
+        open={modalDetalleAbierto && !!tratamientoSeleccionado}
+        onClose={() => {
+          setModalDetalleAbierto(false);
+          setTratamientoSeleccionado(null);
+        }}
       />
     </main>
   );
