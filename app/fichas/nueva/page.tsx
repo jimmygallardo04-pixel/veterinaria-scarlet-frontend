@@ -177,6 +177,7 @@ export default function NuevaFichaPage() {
 
   const pacienteSeleccionado = pacientes.find((p) => p.uuid === form.paciente);
   const pacienteId = pacienteSeleccionado?.id ?? null;
+  const backHref = "/fichas";
 
   // View: Ficha creada - mostrar opciones de agregar sub-recursos
   if (fichaCreada && fichaId) {

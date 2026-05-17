@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import { APP_NAME } from "@/lib/constants";
 import Navbar from "@/app/components/Navbar";
 import SessionManager from "@/app/components/SessionManager";
+import AuthGuard from "@/app/components/AuthGuard";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,10 +45,13 @@ export default function RootLayout({
     >
       <body className="min-h-full bg-slate-100 text-slate-900 flex flex-col">
         <Navbar />
-        {/* SessionManager envuelve el contenido para gestionar inactividad */}
-        <SessionManager inactivityConfig={SESSION_CONFIG}>
-          {children}
-        </SessionManager>
+        {/* AuthGuard valida sesión en cliente (protección adicional a middleware) */}
+        <AuthGuard>
+          {/* SessionManager envuelve el contenido para gestionar inactividad */}
+          <SessionManager inactivityConfig={SESSION_CONFIG}>
+            {children}
+          </SessionManager>
+        </AuthGuard>
 
         <Toaster richColors position="top-right" />
       </body>

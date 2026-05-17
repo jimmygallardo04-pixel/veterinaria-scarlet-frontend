@@ -20,6 +20,13 @@ export function useUser() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Si hay un logout en progreso, no intentar cargar usuario
+    const logoutInProgress = localStorage.getItem("logout_in_progress");
+    if (logoutInProgress === "true") {
+      setLoading(false);
+      return;
+    }
+
     if (typeof window !== "undefined") {
       const path = window.location.pathname;
       if (path === "/login" || path === "/registro") {

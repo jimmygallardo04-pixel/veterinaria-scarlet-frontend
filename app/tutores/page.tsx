@@ -219,7 +219,7 @@ export default function TutoresPage() {
         ) : (
           <section className="space-y-3">
             {tutoresFiltrados.map((tutor) => (
-              <div key={tutor.id} className="card">
+              <div key={tutor.uuid} className="card">
                 {editandoId === tutor.uuid ? (
                   <div>
                     <h3 className="subtitle mb-4">Editar tutor</h3>
@@ -258,7 +258,12 @@ export default function TutoresPage() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-slate-900 truncate">{tutor.nombre}</h3>
+                          <Link
+                            href={`/tutores/${tutor.uuid}`}
+                            className="font-semibold text-slate-900 hover:underline truncate"
+                          >
+                            {tutor.nombre}
+                          </Link>
                           <span className={`text-xs px-2 py-0.5 rounded-full ${tutor.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                             {tutor.activo ? 'Activo' : 'Inactivo'}
                           </span>
@@ -295,7 +300,7 @@ export default function TutoresPage() {
                         <div className="flex flex-wrap gap-2">
                           {tutor.pacientes_info.map((paciente) => (
                             <Link
-                              key={paciente.id}
+                              key={paciente.uuid}
                               href={`/pacientes/${paciente.uuid}`}
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-full text-sm text-slate-700 transition-colors"
                             >

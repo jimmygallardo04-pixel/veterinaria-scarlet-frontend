@@ -86,6 +86,8 @@ export default function NuevaCitaPage() {
 
   const pacienteSeleccionado = pacientes.find((p) => String(p.id) === form.paciente);
 
+  const backHref = "/citas";
+
   return (
     <main className="min-h-screen bg-slate-100 p-8">
       <div className="mx-auto max-w-2xl space-y-6">

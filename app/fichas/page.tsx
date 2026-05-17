@@ -91,7 +91,7 @@ export default function FichasPage() {
         ) : (
           <section className="space-y-3">
             {fichasFiltradas.map((ficha) => (
-              <div key={ficha.id} className="card">
+              <div key={ficha.uuid} className="card">
                 <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
                   <div>
                     <p className="text-muted">{formatFechaHora(ficha.fecha)}</p>

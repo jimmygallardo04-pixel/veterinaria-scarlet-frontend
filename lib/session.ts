@@ -26,8 +26,12 @@ export function clearSession(): void {
   // Llamar a la API para limpiar cookies HttpOnly
   if (typeof window !== "undefined") {
     // Usar sendBeacon para asegurar que la petición se envíe incluso si la página se cierra
-    const beaconData = new Blob([], { type: "application/json" });
-    navigator.sendBeacon("/api/auth/logout", beaconData);
+    try {
+      // sendBeacon funciona mejor con FormData o strings vacíos
+      navigator.sendBeacon("/api/auth/logout");
+    } catch (e) {
+      console.warn("sendBeacon failed:", e);
+    }
     
     // También intentar con fetch (más confiable en algunos casos)
     fetch("/api/auth/logout", { 

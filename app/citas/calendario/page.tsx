@@ -51,7 +51,7 @@ type Tratamiento = {
 };
 
 type Paciente = {
-  id: number;
+  uuid: string;
   nombre: string;
   tutor: number;
   tutor_nombre: string;
@@ -189,7 +189,7 @@ export default function CalendarioCitasPage() {
     }
 
     const pacienteSeleccionado = pacientes.find(
-      (p) => p.id === Number(form.paciente)
+      (p) => p.uuid === form.paciente
     );
 
     if (!pacienteSeleccionado) {
@@ -202,7 +202,7 @@ export default function CalendarioCitasPage() {
     const res = await apiFetch("/citas/", {
       method: "POST",
       body: JSON.stringify({
-        paciente: pacienteSeleccionado.id,
+        paciente: pacienteSeleccionado.uuid,
         tutor: pacienteSeleccionado.tutor,
         fecha_hora: fechaLocal,
         motivo: form.motivo,
@@ -229,7 +229,7 @@ export default function CalendarioCitasPage() {
       return;
     }
 
-    const pacienteSeleccionado = pacientes.find((p) => p.id === Number(form.paciente));
+    const pacienteSeleccionado = pacientes.find((p) => p.uuid === form.paciente);
     if (!pacienteSeleccionado) { toast.error("Paciente no válido"); return; }
 
     const fechaLocal = dayjs(form.fecha_hora).format("YYYY-MM-DDTHH:mm:ss");
@@ -237,7 +237,7 @@ export default function CalendarioCitasPage() {
     const res = await apiFetch(`/citas/${citaSeleccionadaId}/`, {
       method: "PATCH",
       body: JSON.stringify({
-        paciente: pacienteSeleccionado.id,
+        paciente: pacienteSeleccionado.uuid,
         tutor: pacienteSeleccionado.tutor,
         fecha_hora: fechaLocal,
         motivo: form.motivo,
@@ -510,7 +510,7 @@ export default function CalendarioCitasPage() {
             >
               <option value="">Seleccionar paciente</option>
               {pacientes.map((p) => (
-                <option key={p.id} value={p.id}>
+                <option key={p.uuid} value={p.uuid}>
                   {p.nombre} · {p.tutor_nombre}
                 </option>
               ))}

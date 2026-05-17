@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useSessionInactivity, DEFAULT_INACTIVITY_CONFIG } from "@/lib/hooks/useSessionInactivity";
 import SessionInactivityWarning from "./SessionInactivityWarning";
+import useBackToDashboard from "@/app/hooks/useBackToDashboard";
 import { clearSession } from "@/lib/session";
 
 interface SessionManagerProps {
@@ -39,6 +40,34 @@ export default function SessionManager({
     ...DEFAULT_INACTIVITY_CONFIG,
     ...inactivityConfig,
   };
+
+  // Hook para redirigir al dashboard cuando se presiona back
+  useBackToDashboard();
+
+  // Hook para cerrar sesión cuando se recarga la página (F5, Ctrl+R, cierre de navegador, etc)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      console.log("Recarga detectada - limpiando sesión");
+      
+      // Limpiar caches locales (síncrono)
+      if (typeof window !== "undefined") {
+        // Usar localStorage (persiste a través de recarga) en lugar de sessionStorage
+        localStorage.setItem("logout_in_progress", "true");
+        sessionStorage.removeItem("user_me");
+        localStorage.removeItem("session_inactivity");
+      }
+      
+      // Intentar limpiar en backend
+      clearSession();
+    };
+
+    // Escuchar recarga/cierre (F5, Ctrl+R, cerrar navegador, etc)
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
 
   // Función para cerrar sesión
   const handleLogout = useCallback(() => {

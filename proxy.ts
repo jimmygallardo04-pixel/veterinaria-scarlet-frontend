@@ -29,7 +29,16 @@ export default function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Si se solicita forzar limpieza de sesión
+  // Si se solicita logout (desde beforeunload)
+  if (request.nextUrl.searchParams.get("action") === "logout") {
+    const cleanUrl = new URL("/login", request.url);
+    const response = NextResponse.redirect(cleanUrl);
+    response.cookies.set("access_token", "", { maxAge: 0, path: "/" });
+    response.cookies.set("refresh_token", "", { maxAge: 0, path: "/" });
+    return response;
+  }
+
+  // Si se solicita forzar limpieza de sesión (legacy)
   if (pathname === "/login" && request.nextUrl.searchParams.get("clear_session") === "1") {
     const cleanUrl = new URL("/login", request.url);
     const response = NextResponse.redirect(cleanUrl);

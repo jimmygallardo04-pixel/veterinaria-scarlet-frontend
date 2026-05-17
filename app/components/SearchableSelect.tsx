@@ -279,7 +279,7 @@ export default function SearchableSelect({
           ) : (
             filteredOptions.map((option, index) => (
               <div
-                key={option.id}
+                key={`option-${option.id ?? option.nombre}-${index}`}
                 className={`
                   px-3 py-2 cursor-pointer transition-colors
                   ${
