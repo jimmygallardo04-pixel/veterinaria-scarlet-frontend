@@ -1,14 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import BackButton from "@/app/components/BackButton";
+import VacunaModal from "@/app/components/modals/VacunaModal";
+import TratamientoModal from "@/app/components/modals/TratamientoModal";
+import ArchivosModal from "@/app/components/modals/ArchivosModal";
+import CitaModal from "@/app/components/modals/CitaModal";
+import SearchableSelect, { type SearchableOption } from "@/app/components/SearchableSelect";
 import { formatEdad } from "@/lib/utils";
 
 type Paciente = {
   id: number;
+  uuid: string;
   nombre: string;
   tutor_nombre: string;
   especie_nombre?: string;
@@ -80,6 +86,14 @@ export default function NuevaFichaPage() {
   });
   const [guardando, setGuardando] = useState(false);
 
+  // Modal states
+  const [fichaId, setFichaId] = useState<number | null>(null);
+  const [fichaCreada, setFichaCreada] = useState(false);
+  const [vacunaModalOpen, setVacunaModalOpen] = useState(false);
+  const [tratamientoModalOpen, setTratamientoModalOpen] = useState(false);
+  const [archivosModalOpen, setArchivosModalOpen] = useState(false);
+  const [citaModalOpen, setCitaModalOpen] = useState(false);
+
   useEffect(() => {
     apiFetch("/pacientes/?page_size=200").then(async (res) => {
       if (res.ok) { const d = await res.json(); setPacientes(d.results ?? d); }
@@ -108,7 +122,7 @@ export default function NuevaFichaPage() {
       const res = await apiFetch("/fichas/", {
         method: "POST",
         body: JSON.stringify({
-          paciente: Number(form.paciente),
+          paciente: pacienteSeleccionado?.id,
           fecha: fechaISO,
           motivo_consulta: form.motivo_consulta,
           anamnesis: form.anamnesis || null,
@@ -126,6 +140,8 @@ export default function NuevaFichaPage() {
       if (!res.ok) { toast.error("No se pudo crear la ficha clínica"); return; }
 
       const data = await res.json();
+      setFichaId(data.id);
+      setFichaCreada(true);
 
       if (citaParam) {
         await apiFetch(`/citas/${citaParam}/`, {
@@ -136,8 +152,6 @@ export default function NuevaFichaPage() {
       } else {
         toast.success("Ficha clínica creada correctamente");
       }
-
-      router.push(`/fichas/${data.id}`);
     } catch {
       toast.error("Error creando ficha clínica");
     } finally {
@@ -145,10 +159,115 @@ export default function NuevaFichaPage() {
     }
   };
 
-  const pacienteSeleccionado = pacientes.find((p) => String(p.id) === form.paciente);
+  const irAFicha = () => {
+    if (fichaId) {
+      router.push(`/fichas/${fichaId}`);
+    }
+  };
 
+  // Convertir pacientes a formato SearchableOption (usar UUID como identificador)
+  const pacientesOptions: SearchableOption[] = useMemo(() =>
+    pacientes.map((p) => ({
+      id: p.uuid,
+      nombre: p.nombre,
+      descripcion: `${p.especie_nombre ?? "Sin especie"} · Tutor: ${p.tutor_nombre}`,
+    })),
+    [pacientes]
+  );
+
+  const pacienteSeleccionado = pacientes.find((p) => p.uuid === form.paciente);
+  const pacienteId = pacienteSeleccionado?.id ?? null;
+  const backHref = "/fichas";
+
+  // View: Ficha creada - mostrar opciones de agregar sub-recursos
+  if (fichaCreada && fichaId) {
+    return (
+      <main className="min-h-screen bg-slate-100 p-4 md:p-8">
+        <div className="mx-auto max-w-2xl space-y-6">
+          <div className="text-center py-8">
+            <div className="text-6xl mb-4">✅</div>
+            <h1 className="title">Ficha clínica creada</h1>
+            <p className="text-muted">La ficha se ha registrado correctamente.</p>
+          </div>
+
+          {pacienteSeleccionado && (
+            <section className="card">
+              <h2 className="subtitle mb-4">Paciente</h2>
+              <p className="text-lg font-semibold">{pacienteSeleccionado.nombre}</p>
+              <p className="text-muted">{pacienteSeleccionado.especie_nombre ?? "Sin especie"} · Tutor: {pacienteSeleccionado.tutor_nombre}</p>
+            </section>
+          )}
+
+          <section className="card">
+            <h2 className="subtitle mb-4">Agregar información adicional</h2>
+            <p className="text-muted mb-4">Puedes agregar más detalles a esta ficha ahora:</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <button
+                onClick={() => setVacunaModalOpen(true)}
+                className="btn-secondary text-sm"
+              >
+                💉 Vacuna
+              </button>
+              <button
+                onClick={() => setTratamientoModalOpen(true)}
+                className="btn-secondary text-sm"
+              >
+                💊 Tratamiento
+              </button>
+              <button
+                onClick={() => setArchivosModalOpen(true)}
+                className="btn-secondary text-sm"
+              >
+                📄 Documento
+              </button>
+              <button
+                onClick={() => setCitaModalOpen(true)}
+                className="btn-secondary text-sm"
+              >
+                📅 Cita
+              </button>
+            </div>
+          </section>
+
+          <div className="flex gap-3 pb-8">
+            <button onClick={irAFicha} className="btn-primary flex-1">
+              Ver ficha
+            </button>
+            <button onClick={() => router.push("/fichas")} className="btn-secondary flex-1">
+              Volver a fichas
+            </button>
+          </div>
+        </div>
+
+        {/* Modales */}
+        <VacunaModal
+          open={vacunaModalOpen}
+          pacienteId={pacienteId}
+          onClose={() => setVacunaModalOpen(false)}
+        />
+        <TratamientoModal
+          open={tratamientoModalOpen}
+          pacienteId={pacienteId}
+          fichaId={fichaId ?? null}
+          onClose={() => setTratamientoModalOpen(false)}
+        />
+        <ArchivosModal
+          open={archivosModalOpen}
+          pacienteId={pacienteId}
+          onClose={() => setArchivosModalOpen(false)}
+        />
+        <CitaModal
+          open={citaModalOpen}
+          pacienteId={pacienteId}
+          onClose={() => setCitaModalOpen(false)}
+        />
+      </main>
+    );
+  }
+
+  // View: Formulario de ficha
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <main className="min-h-screen bg-slate-100 p-4 md:p-8">
       <div className="mx-auto max-w-5xl space-y-6">
 
         <div>
@@ -161,17 +280,16 @@ export default function NuevaFichaPage() {
         <section className="card">
           <h2 className="subtitle mb-4">Paciente</h2>
 
-          <select
-            className="input w-full"
+          <SearchableSelect
+            options={pacientesOptions}
             value={form.paciente}
-            onChange={(e) => {
-              const nuevoPacienteId = e.target.value;
-              setForm({ ...form, paciente: nuevoPacienteId });
-              
+            onChange={(value) => {
+              setForm({ ...form, paciente: value });
+
               // Actualizar la URL con el nuevo paciente
-              if (nuevoPacienteId) {
+              if (value) {
                 const newUrl = new URL(window.location.href);
-                newUrl.searchParams.set('paciente', nuevoPacienteId);
+                newUrl.searchParams.set('paciente', value);
                 if (citaParam) {
                   newUrl.searchParams.set('cita', citaParam);
                 }
@@ -186,14 +304,18 @@ export default function NuevaFichaPage() {
                 window.history.replaceState({}, '', newUrl.toString());
               }
             }}
-          >
-            <option value="">Seleccionar paciente *</option>
-            {pacientes.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nombre} · {p.especie_nombre ?? "Sin especie"} · Tutor: {p.tutor_nombre}
-              </option>
-            ))}
-          </select>
+            placeholder="Buscar paciente por nombre o tutor..."
+            emptyMessage="No se encontraron pacientes"
+            label="Paciente *"
+            required
+            searchFields={["nombre", "descripcion"]}
+            renderOption={(option) => (
+              <div className="flex flex-col">
+                <span className="font-medium text-slate-900">{option.nombre}</span>
+                <span className="text-sm text-slate-500">{option.descripcion}</span>
+              </div>
+            )}
+          />
 
           {pacienteSeleccionado && (
             <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm md:grid-cols-4">

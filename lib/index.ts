@@ -53,7 +53,7 @@ export { formatFecha, formatFechaHora } from "./utils";
 export { handleApiError, withApiError } from "./apiError";
 
 // Sesión JWT
-export { saveTokens, clearSession, getAccessToken, getRefreshToken } from "./session";
+export { clearSession } from "./session";
 
 // Hooks
 export { usePaginatedFetch } from "./hooks/usePaginatedFetch";

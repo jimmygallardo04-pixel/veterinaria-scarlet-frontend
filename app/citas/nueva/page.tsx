@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import dayjs from "dayjs";
 import { apiFetch } from "@/lib/api";
 import BackButton from "@/app/components/BackButton";
+import SearchableSelect, { type SearchableOption } from "@/app/components/SearchableSelect";
 
 type Paciente = {
   id: number;
+  uuid: string;
   nombre: string;
   tutor: number;
   tutor_nombre: string;
@@ -72,7 +74,19 @@ export default function NuevaCitaPage() {
     }
   };
 
+  // Convertir pacientes a formato SearchableOption
+  const pacientesOptions: SearchableOption[] = useMemo(() => 
+    pacientes.map((p) => ({
+      id: p.id,
+      nombre: p.nombre,
+      descripcion: `${p.especie_nombre ?? "Sin especie"} · Tutor: ${p.tutor_nombre}`,
+    })),
+    [pacientes]
+  );
+
   const pacienteSeleccionado = pacientes.find((p) => String(p.id) === form.paciente);
+
+  const backHref = "/citas";
 
   return (
     <main className="min-h-screen bg-slate-100 p-8">
@@ -88,24 +102,50 @@ export default function NuevaCitaPage() {
 
           {/* Paciente */}
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Paciente *</label>
-            <select
-              className="input w-full"
-              value={form.paciente}
-              onChange={(e) => setForm({ ...form, paciente: e.target.value })}
-            >
-              <option value="">Seleccionar paciente...</option>
-              {pacientes.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nombre} · {p.especie_nombre ?? "Sin especie"} · Tutor: {p.tutor_nombre}
-                </option>
-              ))}
-            </select>
+          <SearchableSelect
+            options={pacientesOptions}
+            value={form.paciente}
+            onChange={(value) => {
+              setForm({ ...form, paciente: value });
+
+              // Actualizar la URL con el nuevo paciente seleccionado
+              const newUrl = new URL(window.location.href);
+              if (value) {
+                const paciente = pacientes.find((p) => String(p.id) === value);
+                if (paciente) {
+                  newUrl.searchParams.set('paciente', paciente.uuid);
+                }
+              } else {
+                newUrl.searchParams.delete('paciente');
+              }
+              window.history.replaceState({}, '', newUrl.toString());
+            }}
+            placeholder="Buscar paciente por nombre o tutor..."
+            emptyMessage="No se encontraron pacientes"
+            label="Paciente *"
+            required
+            searchFields={["nombre", "descripcion"]}
+            renderOption={(option) => (
+              <div className="flex flex-col">
+                <span className="font-medium text-slate-900">{option.nombre}</span>
+                <span className="text-sm text-slate-500">
+                  {option.descripcion}
+                </span>
+              </div>
+            )}
+          />
 
             {pacienteSeleccionado && (
-              <p className="text-muted mt-2">
-                Tutor: <strong>{pacienteSeleccionado.tutor_nombre}</strong>
-              </p>
+              <div className="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm">
+                <p className="text-muted">
+                  Tutor: <strong className="text-slate-900">{pacienteSeleccionado.tutor_nombre}</strong>
+                </p>
+                {pacienteSeleccionado.especie_nombre && (
+                  <p className="text-muted">
+                    Especie: <strong className="text-slate-900">{pacienteSeleccionado.especie_nombre}</strong>
+                    </p>
+                )}
+              </div>
             )}
           </div>
 

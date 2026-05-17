@@ -15,7 +15,10 @@ const BUCKET_NAME = "documentos-veterinaria-scarlet";
 
 type Paciente = {
   id: number;
+  uuid: string;
   nombre: string;
+  tutor: number;
+  tutor_uuid: string;
   raza?: string | null;
   fecha_nacimiento?: string | null;
   color?: string | null;
@@ -38,6 +41,7 @@ type Tratamiento = {
   fecha_inicio: string;
   fecha_fin?: string | null;
   indicaciones?: string | null;
+  ficha_clinica_info?: { id: number; fecha: string; motivo_consulta: string } | null;
 };
 
 type Archivo = {
@@ -52,6 +56,7 @@ type Archivo = {
 
 type FichaHistorial = {
   id: number;
+  uuid: string;
   fecha: string;
   motivo_consulta: string;
   diagnostico?: string | null;
@@ -60,6 +65,7 @@ type FichaHistorial = {
 
 type FichaDetalle = {
   id: number;
+  uuid: string;
   paciente: Paciente;
   paciente_nombre: string;
   tutor_nombre: string;
@@ -85,7 +91,7 @@ type FichaDetalle = {
 
 export default function DetalleFichaPage() {
   const params = useParams();
-  const fichaId = params.id as string;
+  const fichaId = params.uuid as string;
 
   const [ficha, setFicha] = useState<FichaDetalle | null>(null);
   const [loading, setLoading] = useState(true);
@@ -277,25 +283,25 @@ export default function DetalleFichaPage() {
             >
               Exportar PDF
             </button>
-            <Link href={`/fichas/${ficha.id}/editar`} className="btn-secondary">
+            <Link href={`/fichas/${ficha.uuid}/editar`} className="btn-secondary">
               Editar ficha
             </Link>
-            <Link href={`/vacunas/nueva?paciente=${ficha.paciente.id}&ficha=${ficha.id}`} className="btn-primary">
+            <Link href={`/vacunas/nueva?paciente=${ficha.paciente.uuid}&ficha=${ficha.uuid}`} className="btn-primary">
               + Vacuna
             </Link>
             <Link
-              href={`/tratamientos/nuevo?paciente=${ficha.paciente.id}&ficha=${ficha.id}`}
+              href={`/tratamientos/nuevo?paciente=${ficha.paciente.uuid}&ficha=${ficha.uuid}`}
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
             >
               + Tratamiento
             </Link>
             <Link
-              href={`/archivos/nuevo?paciente=${ficha.paciente.id}&ficha=${ficha.id}`}
+              href={`/archivos/nuevo?paciente=${ficha.paciente.uuid}&ficha=${ficha.uuid}`}
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 transition-colors"
             >
               + Documento
             </Link>
-            <Link href={`/pacientes/${ficha.paciente.id}`} className="btn-secondary">
+            <Link href={`/pacientes/${ficha.paciente.uuid}`} className="btn-secondary">
               Ver paciente
             </Link>
           </div>
@@ -306,7 +312,12 @@ export default function DetalleFichaPage() {
           <h2 className="subtitle mb-4">Paciente</h2>
           <div className="grid gap-2 md:grid-cols-2 text-sm">
             <p><strong>Nombre:</strong> {ficha.paciente_nombre}</p>
-            <p><strong>Tutor:</strong> {ficha.tutor_nombre}</p>
+            <p>
+              <strong>Tutor:</strong>{" "}
+              <Link href={`/tutores/${ficha.paciente.tutor_uuid}`} className="text-green-700 hover:underline">
+                {ficha.tutor_nombre}
+              </Link>
+            </p>
             <p><strong>Especie:</strong> {ficha.especie_nombre || "-"}</p>
             <p><strong>Raza:</strong> {ficha.paciente.raza || "-"}</p>
             <p><strong>Sexo:</strong> {ficha.sexo_nombre || "-"}</p>
@@ -379,12 +390,21 @@ export default function DetalleFichaPage() {
             <div className="space-y-3">
               {ficha.tratamientos.map((t) => (
                 <div key={t.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                  <p className="font-semibold text-slate-900">{t.medicamento}</p>
-                  <p className="text-muted">{t.dosis} · {t.frecuencia}</p>
-                  <p className="text-muted">
-                    {t.fecha_inicio} → {t.fecha_fin || "indefinido"}
-                  </p>
-                  {t.indicaciones && <p className="text-sm text-slate-700 mt-2">{t.indicaciones}</p>}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <p className="font-semibold text-slate-900">{t.medicamento}</p>
+                      <p className="text-muted">{t.dosis} · {t.frecuencia}</p>
+                      <p className="text-muted">
+                        {t.fecha_inicio} → {t.fecha_fin || "indefinido"}
+                      </p>
+                      {t.indicaciones && <p className="text-sm text-slate-700 mt-2">{t.indicaciones}</p>}
+                    </div>
+                    {t.ficha_clinica_info && t.ficha_clinica_info.id === parseInt(fichaId) && (
+                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex-shrink-0">
+                        Vinculado
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -401,7 +421,7 @@ export default function DetalleFichaPage() {
               {ficha.historial_fichas.map((h) => (
                 <Link
                   key={h.id}
-                  href={`/fichas/${h.id}`}
+                  href={`/fichas/${h.uuid}`}
                   className="flex items-center justify-between rounded-lg border border-slate-200 p-3 hover:bg-slate-50 transition-colors"
                 >
                   <div>
@@ -566,6 +586,7 @@ export default function DetalleFichaPage() {
         message="¿Estás seguro? El archivo se eliminará permanentemente de Supabase y del sistema."
         confirmLabel="Eliminar"
         danger
+        requireKeyword="ELIMINAR"
         onConfirm={eliminarArchivo}
         onCancel={() => { setConfirmEliminar(false); setArchivoAEliminar(null); }}
       />

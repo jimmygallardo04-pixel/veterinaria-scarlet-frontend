@@ -20,12 +20,30 @@ export function useUser() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Si hay un logout en progreso, no intentar cargar usuario
+    const logoutInProgress = localStorage.getItem("logout_in_progress");
+    if (logoutInProgress === "true") {
+      setLoading(false);
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const path = window.location.pathname;
+      if (path === "/login" || path === "/registro") {
+        setLoading(false);
+        return;
+      }
+    }
+
     // Intentar desde caché primero
     const cached = sessionStorage.getItem(USER_CACHE_KEY);
     if (cached) {
       try {
-        setUser(JSON.parse(cached));
-        setLoading(false);
+        const parsed = JSON.parse(cached);
+        setTimeout(() => {
+          setUser(parsed);
+          setLoading(false);
+        }, 0);
         return;
       } catch {
         sessionStorage.removeItem(USER_CACHE_KEY);

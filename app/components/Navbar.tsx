@@ -23,6 +23,7 @@ const ADMIN_LINKS = [
 
 type PacienteSugerencia = {
   id: number;
+  uuid: string;
   nombre: string;
   especie_nombre?: string;
   tutor_nombre?: string;
@@ -32,8 +33,8 @@ type PacienteSugerencia = {
  * Constructs the URL for navigating to a patient's detail page.
  * Exported as a pure function to enable property-based testing.
  */
-export function buildPacienteUrl(id: number): string {
-  return `/pacientes/${id}`;
+export function buildPacienteUrl(uuid: string): string {
+  return `/pacientes/${uuid}`;
 }
 
 // ── Pure functions for hamburger menu logic (exported for PBT) ───────────────
@@ -66,6 +67,7 @@ export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, clearUser } = useUser();
+
 
   // ── Global search state ──────────────────────────────────────────────────
   const [query, setQuery] = useState("");
@@ -128,7 +130,7 @@ export default function Navbar() {
   }, []);
 
   const handleSelectSugerencia = (paciente: PacienteSugerencia) => {
-    router.push(buildPacienteUrl(paciente.id));
+    router.push(buildPacienteUrl(paciente.uuid));
     setAbierto(false);
     setQuery("");
     setSugerencias([]);
@@ -138,7 +140,7 @@ export default function Navbar() {
   const logout = () => {
     clearSession();
     clearUser();
-    router.push("/login");
+    window.location.href = "/login?clear_session=1";
   };
 
   // ── Mobile hamburger menu state ──────────────────────────────────────────
@@ -163,13 +165,18 @@ export default function Navbar() {
     ? `${user.first_name} ${user.last_name}`.trim()
     : user?.username ?? "";
 
+  // No renderizar en pantallas de autenticación
+  if (pathname === "/login" || pathname === "/registro") {
+    return null;
+  }
+
   return (
-    <header className="border-b border-slate-200 bg-white shadow-sm">
-      <div className="relative mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
+    <header className="border-b border-slate-200 bg-white shadow-sm sticky top-0 z-50">
+      <div className="relative mx-auto flex max-w-6xl items-center justify-between px-4 md:px-6 py-2 md:py-3">
 
         {/* Logo */}
-        <Link href="/dashboard" className="font-bold text-green-700 text-base shrink-0">
-          {APP_EMOJI} {APP_NAME}
+        <Link href="/dashboard" className="font-bold text-green-700 text-sm md:text-base shrink-0 flex-1 min-w-0 truncate">
+          {APP_EMOJI} <span className="hidden sm:inline">{APP_NAME}</span>
         </Link>
 
         {/* Nav links — desktop only */}
@@ -241,7 +248,7 @@ export default function Navbar() {
 
         {/* Global search — visible when authenticated */}
         {user && (
-          <div ref={searchRef} className="relative hidden md:block">
+          <div ref={searchRef} className="relative hidden lg:block">
             <div className="relative">
               <input
                 type="search"
@@ -249,7 +256,7 @@ export default function Navbar() {
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Buscar paciente…"
                 aria-label="Buscar paciente"
-                className="w-52 rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm text-slate-800 placeholder-slate-400 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+                className="w-48 rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm text-slate-800 placeholder-slate-400 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
               />
               {buscando && (
                 <span
@@ -300,21 +307,21 @@ export default function Navbar() {
         )}
 
         {/* Usuario + logout */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3 shrink-0">
           {user && (
-            <div className="hidden sm:flex flex-col items-end">
+            <div className="hidden md:flex flex-col items-end">
               <span className="text-sm font-medium text-slate-800 leading-tight">
                 {displayName}
               </span>
               <span className={`text-xs font-medium leading-tight ${
                 isAdmin ? "text-green-600" : "text-slate-400"
               }`}>
-                {isAdmin ? "Administrador" : "Veterinario"}
+                {isAdmin ? "Admin" : "Vet"}
               </span>
             </div>
           )}
 
-          <button onClick={logout} className="btn-secondary">
+          <button onClick={logout} className="btn-secondary text-xs md:text-sm px-2 md:px-4 py-2 md:py-2">
             Salir
           </button>
         </div>

@@ -12,6 +12,8 @@ import type { Cita, EstadoCita } from "@/lib/types";
 import PageSkeleton from "@/app/components/PageSkeleton";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import Pagination from "@/app/components/Pagination";
+import MinimizableSection from "@/app/components/MinimizableSection";
+import BackButton from "@/app/components/BackButton";
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
@@ -21,7 +23,7 @@ export default function CitasPage() {
 
   const { confirmOpen, requestDelete, cancelDelete, confirmDelete } =
     useConfirmDelete(
-      (id) => `/citas/${id}/`,
+      (uuid) => `/citas/${uuid}/`,
       reload,
       { success: "Cita eliminada", error: "No se pudo eliminar la cita" }
     );
@@ -49,9 +51,9 @@ export default function CitasPage() {
 
   // ── Actualizar estado ─────────────────────────────────────────────────────
 
-  const actualizarEstado = useCallback(async (id: number, estado: EstadoCita) => {
+  const actualizarEstado = useCallback(async (uuid: string, estado: EstadoCita) => {
     try {
-      const res = await apiFetch(`/citas/${id}/`, {
+      const res = await apiFetch(`/citas/${uuid}/`, {
         method: "PATCH",
         body: JSON.stringify({ estado }),
       });
@@ -66,9 +68,11 @@ export default function CitasPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <main className="min-h-screen bg-slate-100 p-4 md:p-8">
       <div className="mx-auto max-w-6xl">
-
+        <div className="mb-2">
+          <BackButton href="/dashboard" label="Volver al dashboard" />
+        </div>
         <div className="page-header">
           <div>
             <h1 className="title">Citas</h1>
@@ -81,10 +85,10 @@ export default function CitasPage() {
         </div>
 
         {/* Filtros */}
-        <div className="card mb-6">
-          <div className="grid gap-3 md:grid-cols-3">
+        <MinimizableSection id="citas-filtros" title="🔍 Filtrar citas" persistent>
+          <div className="grid gap-3 sm:grid-cols-3">
             <input
-              className="input md:col-span-2"
+              className="input sm:col-span-2"
               placeholder="Buscar por paciente, tutor o motivo..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
@@ -110,7 +114,7 @@ export default function CitasPage() {
               </button>
             )}
           </div>
-        </div>
+        </MinimizableSection>
 
         {/* Lista */}
         {loading ? (
@@ -135,38 +139,45 @@ export default function CitasPage() {
                       </span>
                       <p className="text-muted">{formatFechaHora(cita.fecha_hora)}</p>
                     </div>
-                    <h2 className="font-semibold text-slate-900">{cita.paciente_nombre}</h2>
-                    <p className="text-muted">Tutor: {cita.tutor_nombre}</p>
+                    <Link href={`/pacientes/${cita.paciente_uuid}`} className="font-semibold text-slate-900 hover:underline">
+                      {cita.paciente_nombre}
+                    </Link>
+                    <p className="text-muted">
+                      Tutor:{" "}
+                      <Link href={`/tutores/${cita.tutor_uuid}`} className="text-green-700 hover:underline">
+                        {cita.tutor_nombre}
+                      </Link>
+                    </p>
                     <p className="text-sm text-slate-700 mt-1">{cita.motivo}</p>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 shrink-0">
-                    <Link href={`/pacientes/${cita.paciente}`} className="btn-secondary">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:flex-nowrap shrink-0">
+                    <Link href={`/pacientes/${cita.paciente_uuid}`} className="btn-secondary text-sm">
                       Ver paciente
                     </Link>
                     <Link
-                      href={`/fichas/nueva?paciente=${cita.paciente}&cita=${cita.id}`}
-                      className="btn-primary"
+                      href={`/fichas/nueva?paciente=${cita.paciente_uuid}&cita=${cita.uuid}`}
+                      className="btn-primary text-sm"
                     >
                       Crear ficha
                     </Link>
                     {cita.estado !== "completada" && (
                       <button
-                        onClick={() => actualizarEstado(cita.id, "completada")}
-                        className="btn-secondary"
+                        onClick={() => actualizarEstado(cita.uuid, "completada")}
+                        className="btn-secondary text-sm"
                       >
                         Completar
                       </button>
                     )}
                     {cita.estado !== "cancelada" && (
                       <button
-                        onClick={() => actualizarEstado(cita.id, "cancelada")}
-                        className="btn-danger"
+                        onClick={() => actualizarEstado(cita.uuid, "cancelada")}
+                        className="btn-danger text-sm"
                       >
                         Cancelar
                       </button>
                     )}
-                    <button onClick={() => requestDelete(cita.id)} className="btn-danger">
+                    <button onClick={() => requestDelete(cita.uuid)} className="btn-danger text-sm">
                       Eliminar
                     </button>
                   </div>
@@ -191,6 +202,7 @@ export default function CitasPage() {
         message="¿Estás seguro de que quieres eliminar esta cita?"
         confirmLabel="Eliminar"
         danger
+        requireKeyword="ELIMINAR"
         onConfirm={confirmDelete}
         onCancel={cancelDelete}
       />

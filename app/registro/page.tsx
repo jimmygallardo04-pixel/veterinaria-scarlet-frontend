@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { saveTokens } from "@/lib/session";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -142,9 +141,15 @@ export default function RegistroPage() {
       });
 
       if (res.ok) {
-        const data = await res.json();
-        saveTokens(data.access, data.refresh);
+        // Auto-login con las credenciales recién creadas apuntando a nuestro BFF seguro
+        await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: email.trim(), password: datos.password }),
+        });
+        
         router.push("/dashboard");
+        router.refresh();
         return;
       }
 

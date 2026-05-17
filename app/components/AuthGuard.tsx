@@ -1,12 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import Navbar from "./Navbar";
+import { useRouter, usePathname } from "next/navigation";
+import { apiFetch } from "@/lib/api";
+import { clearSession, getCachedUser } from "@/lib/session";
+import type { Usuario } from "@/lib/types";
 
+// Rutas públicas que no requieren autenticación
+const PUBLIC_ROUTES = ["/login", "/registro"];
+
+/**
+ * Loader que se muestra mientras se verifica la sesión.
+ */
 function SessionLoader() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-white">
       <div className="flex flex-col items-center gap-4">
         <div className="w-10 h-10 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
         <p className="text-sm text-slate-500">Verificando sesión...</p>
@@ -15,126 +23,106 @@ function SessionLoader() {
   );
 }
 
-function clearSession() {
-  sessionStorage.removeItem("access");
-  sessionStorage.removeItem("refresh");
-  sessionStorage.removeItem("user_me");
-  localStorage.removeItem("access");
-  localStorage.removeItem("refresh");
-}
-
-async function tryRefreshToken(): Promise<string | null> {
-  const refresh = sessionStorage.getItem("refresh");
-  if (!refresh) return null;
-
-  try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/refresh/`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh }),
-      }
-    );
-
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    sessionStorage.setItem("access", data.access);
-    return data.access;
-  } catch {
-    return null;
-  }
-}
-
+/**
+ * AuthGuard que valida la sesión en cliente.
+ * El middleware.ts maneja la protección server-side.
+ *
+ * Responsabilidades:
+ * - Verifica sesión al montar (usa caché o API)
+ * - Redirige si la sesión no es válida
+ * - Proporciona feedback visual durante carga
+ *
+ * Notas:
+ * - El middleware ya protege rutas privadas en servidor
+ * - Este componente es una capa adicional de seguridad en cliente
+ * - No intenta redirigir autenticados a dashboard (middleware lo hace)
+ */
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-
   const [checking, setChecking] = useState(true);
   const [authorized, setAuthorized] = useState(false);
+  const [user, setUser] = useState<Usuario | null>(null);
 
-  // Rutas que no requieren autenticación
-  const PUBLIC_PATHS = ["/login", "/registro"];
-  const isPublicPage = PUBLIC_PATHS.includes(pathname);
-
+  // Si es ruta pública, no validar, solo renderizar
+  const isPublicRoute = PUBLIC_ROUTES.some((route) => pathname?.startsWith(route));
+  
   useEffect(() => {
-    const validarToken = async () => {
-      setChecking(true);
+    // En rutas públicas, no validar sesión
+    if (isPublicRoute) {
+      setChecking(false);
+      setAuthorized(true);
+      return;
+    }
 
-      let token = sessionStorage.getItem("access");
-
-      // Sin token → intentar refresh antes de redirigir
-      if (!token) {
-        token = await tryRefreshToken();
-      }
-
-      if (!token) {
-        setAuthorized(false);
-        setChecking(false);
-        if (!isPublicPage) router.replace("/login");
-        return;
-      }
-
+    const validateSession = async () => {
       try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/pacientes/`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-
-        if (res.status === 401) {
-          // Access expirado → intentar refresh
-          const newToken = await tryRefreshToken();
-
-          if (!newToken) {
-            clearSession();
-            setAuthorized(false);
-            if (!isPublicPage) router.replace("/login");
-            return;
-          }
-
-          // Revalidar con nuevo token
-          const retry = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/pacientes/`,
-            { headers: { Authorization: `Bearer ${newToken}` } }
-          );
-
-          if (!retry.ok) {
-            clearSession();
-            setAuthorized(false);
-            if (!isPublicPage) router.replace("/login");
-            return;
-          }
-        } else if (!res.ok) {
+        // Si hay un logout en progreso, no autorizar - redirección INMEDIATA
+        const logoutInProgress = localStorage.getItem("logout_in_progress");
+        if (logoutInProgress === "true") {
+          localStorage.removeItem("logout_in_progress");
           clearSession();
           setAuthorized(false);
-          if (!isPublicPage) router.replace("/login");
+          setUser(null);
+          setChecking(false);
+          // Redirección inmediata sin esperar render
+          if (typeof window !== "undefined") {
+            window.location.replace("/login");
+          }
           return;
         }
 
+        // Intentar obtener usuario desde caché primero
+        const cachedUser = getCachedUser<Usuario>();
+        if (cachedUser) {
+          setUser(cachedUser);
+          setAuthorized(true);
+          setChecking(false);
+          return;
+        }
+
+        // Verificar sesión con la API
+        const res = await apiFetch("/me/");
+
+        if (!res.ok) {
+          // Sesión inválida - redirección INMEDIATA
+          clearSession();
+          setAuthorized(false);
+          setUser(null);
+          setChecking(false);
+          // Redirección inmediata sin esperar render
+          if (typeof window !== "undefined") {
+            window.location.replace("/login");
+          }
+          return;
+        }
+
+        const userData: Usuario = await res.json();
+        setUser(userData);
         setAuthorized(true);
-        // Usuario ya autenticado intenta entrar a login o registro → al dashboard
-        if (isPublicPage) router.replace("/dashboard");
-      } catch {
+      } catch (error) {
+        console.error("Error validating session:", error);
         clearSession();
         setAuthorized(false);
-        if (!isPublicPage) router.replace("/login");
+        setUser(null);
+        setChecking(false);
+        // Redirección inmediata sin esperar render
+        if (typeof window !== "undefined") {
+          window.location.replace("/login");
+        }
       } finally {
         setChecking(false);
       }
     };
 
-    validarToken();
-  }, [pathname, router, isPublicPage]);
+    validateSession();
+  }, [pathname, isPublicRoute]);
 
+  // Mostrar loader mientras se verifica
   if (checking) return <SessionLoader />;
 
-  if (!authorized && !isPublicPage) return null;
+  // Si no está autorizado, mostrar loader mientras se redirecciona
+  if (!authorized) return <SessionLoader />;
 
-  return (
-    <>
-      {!isPublicPage && authorized && <Navbar />}
-      {children}
-    </>
-  );
+  return <>{children}</>;
 }
