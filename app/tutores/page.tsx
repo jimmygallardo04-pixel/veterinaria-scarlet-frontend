@@ -9,6 +9,7 @@ import type { Tutor } from "@/lib/types";
 import PageSkeleton from "@/app/components/PageSkeleton";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import Pagination from "@/app/components/Pagination";
+import MinimizableSection from "@/app/components/MinimizableSection";
 
 // ─── Tipos de formulario (locales — no son entidades del dominio) ─────────────
 
@@ -129,7 +130,7 @@ export default function TutoresPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <main className="min-h-screen bg-slate-100 p-4 md:p-8">
       <div className="mx-auto max-w-5xl">
 
         <div className="page-header">
@@ -140,9 +141,8 @@ export default function TutoresPage() {
         </div>
 
         {/* Formulario crear */}
-        <section className="card mb-6">
-          <h2 className="subtitle mb-4">Crear tutor</h2>
-          <div className="grid gap-3 md:grid-cols-2">
+        <MinimizableSection id="tutores-crear" title="➕ Crear tutor" persistent>
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
             <input className="input" placeholder="Nombre *" value={form.nombre}
               onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
             <input className="input" placeholder="RUT" value={form.rut}
@@ -151,16 +151,16 @@ export default function TutoresPage() {
               onChange={(e) => setForm({ ...form, telefono: e.target.value })} />
             <input className="input" placeholder="Email" type="email" value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            <input className="input md:col-span-2" placeholder="Dirección" value={form.direccion}
+            <input className="input sm:col-span-2" placeholder="Dirección" value={form.direccion}
               onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
           </div>
           <button onClick={crearTutor} disabled={guardando} className="btn-primary mt-4">
             {guardando ? "Guardando..." : "Guardar tutor"}
           </button>
-        </section>
+        </MinimizableSection>
 
         {/* Buscador */}
-        <div className="card mb-6">
+        <MinimizableSection id="tutores-buscar" title="🔍 Buscar tutores" persistent>
           <input
             className="input"
             placeholder="Buscar por nombre, RUT, teléfono o email..."
@@ -172,7 +172,7 @@ export default function TutoresPage() {
               {tutoresFiltrados.length} de {tutores.length} tutores
             </p>
           )}
-        </div>
+        </MinimizableSection>
 
         {/* Lista */}
         {loading ? (
@@ -190,7 +190,7 @@ export default function TutoresPage() {
                 {editandoId === tutor.id ? (
                   <div>
                     <h3 className="subtitle mb-4">Editar tutor</h3>
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                       <input className="input" placeholder="Nombre *" value={editForm.nombre}
                         onChange={(e) => setEditForm({ ...editForm, nombre: e.target.value })} />
                       <input className="input" placeholder="RUT" value={editForm.rut}
@@ -199,10 +199,10 @@ export default function TutoresPage() {
                         onChange={(e) => setEditForm({ ...editForm, telefono: e.target.value })} />
                       <input className="input" placeholder="Email" type="email" value={editForm.email}
                         onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
-                      <input className="input md:col-span-2" placeholder="Dirección" value={editForm.direccion}
+                      <input className="input sm:col-span-2" placeholder="Dirección" value={editForm.direccion}
                         onChange={(e) => setEditForm({ ...editForm, direccion: e.target.value })} />
                     </div>
-                    <div className="flex gap-2 mt-4">
+                    <div className="flex flex-col gap-2 mt-4 sm:flex-row">
                       <button onClick={() => guardarEdicion(tutor.id)} disabled={guardando} className="btn-primary">
                         {guardando ? "Guardando..." : "Guardar cambios"}
                       </button>
@@ -212,21 +212,21 @@ export default function TutoresPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <h3 className="font-semibold text-slate-900">{tutor.nombre}</h3>
-                      <p className="text-muted">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-slate-900 truncate">{tutor.nombre}</h3>
+                      <p className="text-muted text-sm overflow-x-auto whitespace-nowrap">
                         {tutor.telefono}
                         {tutor.rut ? ` · ${tutor.rut}` : ""}
                         {tutor.email ? ` · ${tutor.email}` : ""}
                       </p>
-                      {tutor.direccion && <p className="text-muted">{tutor.direccion}</p>}
+                      {tutor.direccion && <p className="text-muted text-sm mt-1 truncate">{tutor.direccion}</p>}
                     </div>
                     <div className="flex gap-2 shrink-0">
-                      <button onClick={() => iniciarEdicion(tutor)} className="btn-secondary">
+                      <button onClick={() => iniciarEdicion(tutor)} className="btn-secondary text-sm">
                         Editar
                       </button>
-                      <button onClick={() => requestDelete(tutor.id)} className="btn-danger">
+                      <button onClick={() => requestDelete(tutor.id)} className="btn-danger text-sm">
                         Eliminar
                       </button>
                     </div>

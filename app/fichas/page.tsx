@@ -7,6 +7,7 @@ import { formatFechaHora } from "@/lib/utils";
 import type { FichaClinica } from "@/lib/types";
 import PageSkeleton from "@/app/components/PageSkeleton";
 import Pagination from "@/app/components/Pagination";
+import MinimizableSection from "@/app/components/MinimizableSection";
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
@@ -26,7 +27,7 @@ export default function FichasPage() {
   }, [fichas, busqueda]);
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <main className="min-h-screen bg-slate-100 p-4 md:p-8">
       <div className="mx-auto max-w-6xl">
 
         <div className="page-header">
@@ -40,7 +41,7 @@ export default function FichasPage() {
         </div>
 
         {/* Buscador */}
-        <div className="card mb-6">
+        <MinimizableSection id="fichas-buscar" title="🔍 Buscar fichas" persistent>
           <div className="flex items-center gap-3">
             <svg className="text-slate-400 shrink-0" xmlns="http://www.w3.org/2000/svg"
               width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -55,7 +56,7 @@ export default function FichasPage() {
               onChange={(e) => setBusqueda(e.target.value)}
             />
             {busqueda && (
-              <button onClick={() => setBusqueda("")} className="btn-ghost shrink-0">
+              <button onClick={() => setBusqueda("")} className="btn-ghost shrink-0 text-sm">
                 Limpiar
               </button>
             )}
@@ -65,7 +66,7 @@ export default function FichasPage() {
               {fichasFiltradas.length} de {fichas.length} fichas
             </p>
           )}
-        </div>
+        </MinimizableSection>
 
         {/* Lista */}
         {loading ? (
@@ -101,10 +102,10 @@ export default function FichasPage() {
                     )}
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row shrink-0">
-                    <Link href={`/fichas/${ficha.id}`} className="btn-primary text-center">
+                    <Link href={`/fichas/${ficha.id}`} className="btn-primary text-center text-sm">
                       Ver ficha
                     </Link>
-                    <Link href={`/pacientes/${ficha.paciente}`} className="btn-secondary text-center">
+                    <Link href={`/pacientes/${ficha.paciente}`} className="btn-secondary text-center text-sm">
                       Ver paciente
                     </Link>
                   </div>

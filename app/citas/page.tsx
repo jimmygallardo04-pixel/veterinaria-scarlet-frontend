@@ -12,6 +12,7 @@ import type { Cita, EstadoCita } from "@/lib/types";
 import PageSkeleton from "@/app/components/PageSkeleton";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import Pagination from "@/app/components/Pagination";
+import MinimizableSection from "@/app/components/MinimizableSection";
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ export default function CitasPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <main className="min-h-screen bg-slate-100 p-4 md:p-8">
       <div className="mx-auto max-w-6xl">
 
         <div className="page-header">
@@ -81,10 +82,10 @@ export default function CitasPage() {
         </div>
 
         {/* Filtros */}
-        <div className="card mb-6">
-          <div className="grid gap-3 md:grid-cols-3">
+        <MinimizableSection id="citas-filtros" title="🔍 Filtrar citas" persistent>
+          <div className="grid gap-3 sm:grid-cols-3">
             <input
-              className="input md:col-span-2"
+              className="input sm:col-span-2"
               placeholder="Buscar por paciente, tutor o motivo..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
@@ -110,7 +111,7 @@ export default function CitasPage() {
               </button>
             )}
           </div>
-        </div>
+        </MinimizableSection>
 
         {/* Lista */}
         {loading ? (
@@ -140,20 +141,20 @@ export default function CitasPage() {
                     <p className="text-sm text-slate-700 mt-1">{cita.motivo}</p>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 shrink-0">
-                    <Link href={`/pacientes/${cita.paciente}`} className="btn-secondary">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:flex-nowrap shrink-0">
+                    <Link href={`/pacientes/${cita.paciente}`} className="btn-secondary text-sm">
                       Ver paciente
                     </Link>
                     <Link
                       href={`/fichas/nueva?paciente=${cita.paciente}&cita=${cita.id}`}
-                      className="btn-primary"
+                      className="btn-primary text-sm"
                     >
                       Crear ficha
                     </Link>
                     {cita.estado !== "completada" && (
                       <button
                         onClick={() => actualizarEstado(cita.id, "completada")}
-                        className="btn-secondary"
+                        className="btn-secondary text-sm"
                       >
                         Completar
                       </button>
@@ -161,12 +162,12 @@ export default function CitasPage() {
                     {cita.estado !== "cancelada" && (
                       <button
                         onClick={() => actualizarEstado(cita.id, "cancelada")}
-                        className="btn-danger"
+                        className="btn-danger text-sm"
                       >
                         Cancelar
                       </button>
                     )}
-                    <button onClick={() => requestDelete(cita.id)} className="btn-danger">
+                    <button onClick={() => requestDelete(cita.id)} className="btn-danger text-sm">
                       Eliminar
                     </button>
                   </div>

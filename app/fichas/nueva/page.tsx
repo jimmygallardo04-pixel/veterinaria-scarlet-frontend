@@ -5,6 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import BackButton from "@/app/components/BackButton";
+import VacunaModal from "@/app/components/modals/VacunaModal";
+import TratamientoModal from "@/app/components/modals/TratamientoModal";
+import ArchivosModal from "@/app/components/modals/ArchivosModal";
+import CitaModal from "@/app/components/modals/CitaModal";
 import { formatEdad } from "@/lib/utils";
 
 type Paciente = {
@@ -80,6 +84,14 @@ export default function NuevaFichaPage() {
   });
   const [guardando, setGuardando] = useState(false);
 
+  // Modal states
+  const [fichaId, setFichaId] = useState<number | null>(null);
+  const [fichaCreada, setFichaCreada] = useState(false);
+  const [vacunaModalOpen, setVacunaModalOpen] = useState(false);
+  const [tratamientoModalOpen, setTratamientoModalOpen] = useState(false);
+  const [archivosModalOpen, setArchivosModalOpen] = useState(false);
+  const [citaModalOpen, setCitaModalOpen] = useState(false);
+
   useEffect(() => {
     apiFetch("/pacientes/?page_size=200").then(async (res) => {
       if (res.ok) { const d = await res.json(); setPacientes(d.results ?? d); }
@@ -126,6 +138,8 @@ export default function NuevaFichaPage() {
       if (!res.ok) { toast.error("No se pudo crear la ficha clínica"); return; }
 
       const data = await res.json();
+      setFichaId(data.id);
+      setFichaCreada(true);
 
       if (citaParam) {
         await apiFetch(`/citas/${citaParam}/`, {
@@ -136,8 +150,6 @@ export default function NuevaFichaPage() {
       } else {
         toast.success("Ficha clínica creada correctamente");
       }
-
-      router.push(`/fichas/${data.id}`);
     } catch {
       toast.error("Error creando ficha clínica");
     } finally {
@@ -145,10 +157,104 @@ export default function NuevaFichaPage() {
     }
   };
 
-  const pacienteSeleccionado = pacientes.find((p) => String(p.id) === form.paciente);
+  const irAFicha = () => {
+    if (fichaId) {
+      router.push(`/fichas/${fichaId}`);
+    }
+  };
 
+  const pacienteSeleccionado = pacientes.find((p) => String(p.id) === form.paciente);
+  const pacienteId = form.paciente ? Number(form.paciente) : null;
+
+  // View: Ficha creada - mostrar opciones de agregar sub-recursos
+  if (fichaCreada && fichaId) {
+    return (
+      <main className="min-h-screen bg-slate-100 p-4 md:p-8">
+        <div className="mx-auto max-w-2xl space-y-6">
+          <div className="text-center py-8">
+            <div className="text-6xl mb-4">✅</div>
+            <h1 className="title">Ficha clínica creada</h1>
+            <p className="text-muted">La ficha se ha registrado correctamente.</p>
+          </div>
+
+          {pacienteSeleccionado && (
+            <section className="card">
+              <h2 className="subtitle mb-4">Paciente</h2>
+              <p className="text-lg font-semibold">{pacienteSeleccionado.nombre}</p>
+              <p className="text-muted">{pacienteSeleccionado.especie_nombre ?? "Sin especie"} · Tutor: {pacienteSeleccionado.tutor_nombre}</p>
+            </section>
+          )}
+
+          <section className="card">
+            <h2 className="subtitle mb-4">Agregar información adicional</h2>
+            <p className="text-muted mb-4">Puedes agregar más detalles a esta ficha ahora:</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <button
+                onClick={() => setVacunaModalOpen(true)}
+                className="btn-secondary text-sm"
+              >
+                💉 Vacuna
+              </button>
+              <button
+                onClick={() => setTratamientoModalOpen(true)}
+                className="btn-secondary text-sm"
+              >
+                💊 Tratamiento
+              </button>
+              <button
+                onClick={() => setArchivosModalOpen(true)}
+                className="btn-secondary text-sm"
+              >
+                📄 Documento
+              </button>
+              <button
+                onClick={() => setCitaModalOpen(true)}
+                className="btn-secondary text-sm"
+              >
+                📅 Cita
+              </button>
+            </div>
+          </section>
+
+          <div className="flex gap-3 pb-8">
+            <button onClick={irAFicha} className="btn-primary flex-1">
+              Ver ficha
+            </button>
+            <button onClick={() => router.push("/fichas")} className="btn-secondary flex-1">
+              Volver a fichas
+            </button>
+          </div>
+        </div>
+
+        {/* Modales */}
+        <VacunaModal
+          open={vacunaModalOpen}
+          pacienteId={pacienteId}
+          onClose={() => setVacunaModalOpen(false)}
+        />
+        <TratamientoModal
+          open={tratamientoModalOpen}
+          pacienteId={pacienteId}
+          fichaId={fichaId}
+          onClose={() => setTratamientoModalOpen(false)}
+        />
+        <ArchivosModal
+          open={archivosModalOpen}
+          pacienteId={pacienteId}
+          onClose={() => setArchivosModalOpen(false)}
+        />
+        <CitaModal
+          open={citaModalOpen}
+          pacienteId={pacienteId}
+          onClose={() => setCitaModalOpen(false)}
+        />
+      </main>
+    );
+  }
+
+  // View: Formulario de ficha
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <main className="min-h-screen bg-slate-100 p-4 md:p-8">
       <div className="mx-auto max-w-5xl space-y-6">
 
         <div>
@@ -167,7 +273,7 @@ export default function NuevaFichaPage() {
             onChange={(e) => {
               const nuevoPacienteId = e.target.value;
               setForm({ ...form, paciente: nuevoPacienteId });
-              
+
               // Actualizar la URL con el nuevo paciente
               if (nuevoPacienteId) {
                 const newUrl = new URL(window.location.href);

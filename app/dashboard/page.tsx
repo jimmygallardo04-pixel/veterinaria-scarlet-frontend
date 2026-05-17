@@ -94,8 +94,8 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
-      <div className="mx-auto max-w-6xl space-y-8">
+    <main className="min-h-screen bg-slate-100 p-4 md:p-8">
+      <div className="mx-auto max-w-6xl space-y-6 md:space-y-8">
 
         <section>
           <h1 className="title">Dashboard</h1>
@@ -104,17 +104,17 @@ export default function DashboardPage() {
 
         {/* Alertas clínicas */}
         <section>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
             <h2 className="subtitle">Alertas clínicas</h2>
-            <Link href="/alertas" className="btn-secondary">Ver detalle</Link>
+            <Link href="/alertas" className="btn-secondary text-sm">Ver detalle</Link>
           </div>
 
           {loading ? (
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {[1, 2, 3].map((i) => <div key={i} className="card skeleton h-28" />)}
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <StatCard label="Vacunas vencidas"    value={resumen?.vacunas_vencidas ?? 0}    color="red"    href="/alertas" sub="Requieren atención inmediata" />
               <StatCard label="Próximas vacunas"    value={resumen?.vacunas_proximas ?? 0}    color="yellow" href="/alertas" sub="Vencen dentro de 30 días" />
               <StatCard label="Tratamientos activos" value={resumen?.tratamientos_activos ?? 0} color="green"  href="/alertas" sub="Pacientes en tratamiento" />
@@ -124,9 +124,9 @@ export default function DashboardPage() {
 
         {/* Próximas citas */}
         <section>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
             <h2 className="subtitle">Próximas citas pendientes</h2>
-            <Link href="/citas" className="btn-secondary">Ver todas</Link>
+            <Link href="/citas" className="btn-secondary text-sm">Ver todas</Link>
           </div>
 
           {loading ? (
@@ -141,12 +141,12 @@ export default function DashboardPage() {
           ) : (
             <div className="space-y-2">
               {citasPendientes.map((cita) => (
-                <div key={cita.id} className="card flex items-center justify-between gap-4 py-4">
-                  <div>
-                    <p className="font-semibold text-slate-900">{cita.paciente_nombre}</p>
-                    <p className="text-muted">{formatFechaHora(cita.fecha_hora)} · {cita.motivo}</p>
+                <div key={cita.id} className="card flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between py-3 md:py-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-900 truncate">{cita.paciente_nombre}</p>
+                    <p className="text-muted text-sm">{formatFechaHora(cita.fecha_hora)} · {cita.motivo}</p>
                   </div>
-                  <Link href={`/fichas/nueva?paciente=${cita.paciente}&cita=${cita.id}`} className="btn-primary shrink-0">
+                  <Link href={`/fichas/nueva?paciente=${cita.paciente}&cita=${cita.id}`} className="btn-primary shrink-0 text-sm w-full sm:w-auto text-center">
                     Atender
                   </Link>
                 </div>
@@ -158,12 +158,12 @@ export default function DashboardPage() {
         {/* Accesos rápidos */}
         <section>
           <h2 className="subtitle mb-4">Accesos rápidos</h2>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {ACCESOS.map((a) => (
               <Link key={a.href} href={a.href} className="card hover:shadow-md hover:border-slate-300 transition-all">
-                <div className="text-2xl mb-2">{a.icon}</div>
-                <h3 className="font-semibold text-slate-900">{a.label}</h3>
-                <p className="text-muted mt-1">{a.desc}</p>
+                <div className="text-3xl mb-2">{a.icon}</div>
+                <h3 className="font-semibold text-slate-900 text-sm md:text-base">{a.label}</h3>
+                <p className="text-muted text-xs md:text-sm mt-1">{a.desc}</p>
               </Link>
             ))}
           </div>

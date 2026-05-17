@@ -11,6 +11,7 @@ import type { Paciente, Opcion } from "@/lib/types";
 import PageSkeleton from "@/app/components/PageSkeleton";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import Pagination from "@/app/components/Pagination";
+import MinimizableSection from "@/app/components/MinimizableSection";
 import { formatEdad } from "@/lib/utils";
 
 // ─── Tipos de formulario (locales — no son entidades del dominio) ─────────────
@@ -256,7 +257,7 @@ export default function PacientesPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <main className="min-h-screen bg-slate-100 p-4 md:p-8">
       <div className="mx-auto max-w-6xl">
 
         <div className="page-header">
@@ -271,11 +272,10 @@ export default function PacientesPage() {
         </div>
 
         {/* Filtros */}
-        <section className="card mb-6">
-          <h2 className="subtitle mb-4">Buscar y filtrar</h2>
-          <div className="grid gap-3 md:grid-cols-4">
+        <MinimizableSection id="pacientes-filtros" title="🔍 Buscar y filtrar" persistent>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <input
-              className="input md:col-span-2"
+              className="input sm:col-span-2"
               placeholder="Buscar por nombre, tutor, especie, raza, sexo o color..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
@@ -297,11 +297,10 @@ export default function PacientesPage() {
               Limpiar filtros
             </button>
           </div>
-        </section>
+        </MinimizableSection>
 
         {/* Formulario crear */}
-        <section className="card mb-8">
-          <h2 className="subtitle mb-4">Crear paciente</h2>
+        <MinimizableSection id="pacientes-crear" title="➕ Crear paciente" persistent>
           <PacienteFormFields
             form={form}
             onChange={setForm}
@@ -312,7 +311,7 @@ export default function PacientesPage() {
           <button onClick={crearPaciente} className="btn-primary mt-4">
             Crear paciente
           </button>
-        </section>
+        </MinimizableSection>
 
         {/* Lista */}
         {loading ? (
@@ -365,20 +364,20 @@ export default function PacientesPage() {
                         <p className="mt-2 text-sm text-slate-700">{p.observaciones}</p>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:flex-nowrap">
                       <Link href={`/pacientes/${p.id}`} className="btn-primary text-center text-sm">
                         Ver ficha
                       </Link>
-                      <Link href={`/fichas/nueva?paciente=${p.id}`} className="btn-primary text-center">
+                      <Link href={`/fichas/nueva?paciente=${p.id}`} className="btn-primary text-center text-sm">
                         Nueva ficha
                       </Link>
-                      <Link href={`/citas/nueva?paciente=${p.id}`} className="btn-secondary text-center">
+                      <Link href={`/citas/nueva?paciente=${p.id}`} className="btn-secondary text-center text-sm">
                         Nueva cita
                       </Link>
-                      <button onClick={() => iniciarEdicion(p)} className="btn-secondary">
+                      <button onClick={() => iniciarEdicion(p)} className="btn-secondary text-sm">
                         Editar
                       </button>
-                      <button onClick={() => requestDelete(p.id)} className="btn-danger">
+                      <button onClick={() => requestDelete(p.id)} className="btn-danger text-sm">
                         Eliminar
                       </button>
                     </div>

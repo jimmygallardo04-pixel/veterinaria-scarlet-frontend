@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Navbar from "./Navbar";
+import InactivityWarning from "./InactivityWarning";
+import { useInactivityTimer } from "@/lib/hooks/useInactivityTimer";
 
 function SessionLoader() {
   return (
@@ -57,6 +59,23 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   // Rutas que no requieren autenticación
   const PUBLIC_PATHS = ["/login", "/registro"];
   const isPublicPage = PUBLIC_PATHS.includes(pathname);
+
+  // Inactividad timeout: 15 minutos, advertencia en 2 minutos
+  const { isWarningShown, extendSession } = useInactivityTimer({
+    inactivityTimeoutMs: 15 * 60 * 1000,
+    warningTimeMs: 2 * 60 * 1000,
+    enabled: authorized && !isPublicPage,
+    onTimeout: () => {
+      // Logout automático
+      handleLogout();
+    },
+  });
+
+  const handleLogout = () => {
+    clearSession();
+    setAuthorized(false);
+    router.replace("/login");
+  };
 
   useEffect(() => {
     const validarToken = async () => {
@@ -135,6 +154,13 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     <>
       {!isPublicPage && authorized && <Navbar />}
       {children}
+      <InactivityWarning
+        open={isWarningShown}
+        onExtend={extendSession}
+        onLogout={handleLogout}
+        warningTimeMs={2 * 60 * 1000}
+      />
     </>
   );
 }
+
