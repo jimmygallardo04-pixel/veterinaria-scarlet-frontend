@@ -64,6 +64,7 @@ function AccionesPaciente({ pacienteUuid }: { pacienteUuid: string }) {
   );
 }
 
+
 export default function AlertasPage() {
   const [data, setData] = useState<AlertasResponse | null>(null);
   const [loading, setLoading] = useState(true);
