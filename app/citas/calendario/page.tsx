@@ -447,7 +447,7 @@ export default function CalendarioCitasPage() {
             onSelectEvent={(event: CalendarEvent) => {
               if (event.resourceType === "cita" && event.cita) {
                 setModoEdicion(true);
-                setCitaSeleccionadaId(event.cita.id);
+                setCitaSeleccionadaId(String(event.cita.id));
 
                 setForm({
                   paciente: String(event.cita.paciente),
