@@ -13,7 +13,7 @@ import PageSkeleton from "@/app/components/PageSkeleton";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import MinimizableSection from "@/app/components/MinimizableSection";
 import PacienteForm, { type PacienteFormValues } from "@/app/components/PacienteForm";
-import { formatFechaHora, formatEdad } from "@/lib/utils";
+import { formatFechaHora, formatEdad, formatFecha, diasDesdeHoy } from "@/lib/utils";
 
 function useEdadActualizada(fechaNacimiento: string | null | undefined) {
   const [, setTick] = useState(0);
@@ -102,9 +102,10 @@ type Archivo = {
 
 type TipoArchivo = { id: number; nombre: string };
 
-type Tab = "vacunas" | "fichas" | "citas" | "tratamientos" | "documentos";
+type Tab = "resumen" | "vacunas" | "fichas" | "citas" | "tratamientos" | "documentos";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: "resumen", label: "Resumen", icon: "🐾" },
   { id: "vacunas", label: "Vacunas", icon: "💉" },
   { id: "fichas", label: "Fichas", icon: "📋" },
   { id: "citas", label: "Citas", icon: "📅" },
@@ -135,7 +136,7 @@ export default function DetallePacientePage() {
   const [especies, setEspecies] = useState<Opcion[]>([]);
   const [sexos, setSexos] = useState<Opcion[]>([]);
 
-  const [tab, setTab] = useState<Tab>("vacunas");
+  const [tab, setTab] = useState<Tab>("resumen");
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
 
@@ -791,10 +792,12 @@ export default function DetallePacientePage() {
 
         {/* Tabs */}
         <div>
-          <div className="flex gap-1 border-b border-slate-200 mb-4 overflow-x-auto">
+          <div className="flex gap-1 border-b border-slate-200 mb-4 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             {TABS.map((t) => {
               const count =
-                t.id === "vacunas"
+                t.id === "resumen"
+                  ? 0
+                  : t.id === "vacunas"
                   ? vacunas.length
                   : t.id === "fichas"
                   ? fichas.length
@@ -831,6 +834,310 @@ export default function DetallePacientePage() {
               );
             })}
           </div>
+
+          {tab === "resumen" && (() => {
+            // ── Construir línea de tiempo ──────────────────────────────────
+            type EventoTipo = "nacimiento" | "ficha" | "vacuna" | "vacuna_proxima" | "tratamiento" | "cita";
+            type Evento = {
+              fecha: Date;
+              tipo: EventoTipo;
+              titulo: string;
+              subtitulo?: string;
+              extra?: string;
+              uuid?: string;
+              estado?: string;
+              vencida?: boolean;
+              activo?: boolean;
+            };
+
+            const eventos: Evento[] = [];
+
+            // Nacimiento
+            if (paciente?.fecha_nacimiento) {
+              eventos.push({
+                fecha: new Date(paciente.fecha_nacimiento + "T00:00:00"),
+                tipo: "nacimiento",
+                titulo: "Nacimiento",
+                subtitulo: formatFecha(paciente.fecha_nacimiento),
+                extra: edadActualizada,
+              });
+            }
+
+            // Fichas
+            fichas.forEach((f) => {
+              eventos.push({
+                fecha: new Date(f.fecha),
+                tipo: "ficha",
+                titulo: f.motivo_consulta,
+                subtitulo: formatFechaHora(f.fecha),
+                extra: f.diagnostico ?? undefined,
+                uuid: f.uuid,
+              });
+            });
+
+            // Vacunas aplicadas
+            vacunas.forEach((v) => {
+              eventos.push({
+                fecha: new Date(v.fecha_aplicacion + "T00:00:00"),
+                tipo: "vacuna",
+                titulo: v.nombre_vacuna,
+                subtitulo: `Aplicada: ${formatFecha(v.fecha_aplicacion)}`,
+                extra: v.observaciones ?? undefined,
+                uuid: v.uuid,
+              });
+            });
+
+            // Citas
+            citas.forEach((c) => {
+              eventos.push({
+                fecha: new Date(c.fecha_hora),
+                tipo: "cita",
+                titulo: c.motivo,
+                subtitulo: formatFechaHora(c.fecha_hora),
+                uuid: c.uuid,
+                estado: c.estado,
+              });
+            });
+
+            // Tratamientos
+            tratamientos.forEach((t) => {
+              const activo = !t.fecha_fin || new Date(t.fecha_fin) >= new Date();
+              eventos.push({
+                fecha: new Date(t.fecha_inicio + "T00:00:00"),
+                tipo: "tratamiento",
+                titulo: t.medicamento,
+                subtitulo: `${t.dosis} · ${t.frecuencia}`,
+                extra: t.fecha_fin ? `Hasta: ${formatFecha(t.fecha_fin)}` : "Sin fecha de fin",
+                uuid: t.uuid,
+                activo,
+              });
+            });
+
+            // Ordenar por fecha descendente (más reciente primero)
+            eventos.sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
+
+            // Próximas vacunas (futuras)
+            const proximasVacunas = vacunas.filter(
+              (v) => v.proxima_dosis && new Date(v.proxima_dosis) >= new Date()
+            ).sort((a, b) =>
+              new Date(a.proxima_dosis!).getTime() - new Date(b.proxima_dosis!).getTime()
+            );
+
+            // Vacunas vencidas
+            const vacunasVencidas = vacunas.filter(
+              (v) => v.proxima_dosis && new Date(v.proxima_dosis) < new Date()
+            );
+
+            // Tratamientos activos
+            const tratamientosActivos = tratamientos.filter(
+              (t) => !t.fecha_fin || new Date(t.fecha_fin) >= new Date()
+            );
+
+            // Próximas citas
+            const citasPendientes = citas
+              .filter((c) => c.estado === "pendiente" && new Date(c.fecha_hora) >= new Date())
+              .sort((a, b) => new Date(a.fecha_hora).getTime() - new Date(b.fecha_hora).getTime());
+
+            const iconoEvento: Record<EventoTipo, string> = {
+              nacimiento: "🐣",
+              ficha: "📋",
+              vacuna: "💉",
+              vacuna_proxima: "⏰",
+              tratamiento: "💊",
+              cita: "📅",
+            };
+
+            const colorLinea: Record<EventoTipo, string> = {
+              nacimiento: "bg-purple-500",
+              ficha: "bg-green-500",
+              vacuna: "bg-blue-500",
+              vacuna_proxima: "bg-orange-400",
+              tratamiento: "bg-yellow-500",
+              cita: "bg-slate-400",
+            };
+
+            const colorCard: Record<EventoTipo, string> = {
+              nacimiento: "border-l-4 border-purple-400 bg-purple-50",
+              ficha: "border-l-4 border-green-400 bg-green-50",
+              vacuna: "border-l-4 border-blue-400 bg-blue-50",
+              vacuna_proxima: "border-l-4 border-orange-400 bg-orange-50",
+              tratamiento: "border-l-4 border-yellow-400 bg-yellow-50",
+              cita: "border-l-4 border-slate-300 bg-slate-50",
+            };
+
+            return (
+              <div className="space-y-6">
+                {/* ── Tarjetas de resumen rápido ── */}
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  <div className="card text-center py-4">
+                    <p className="text-2xl font-bold text-green-700">{fichas.length}</p>
+                    <p className="text-xs text-slate-500 mt-1">Fichas clínicas</p>
+                  </div>
+                  <div className="card text-center py-4">
+                    <p className="text-2xl font-bold text-blue-600">{vacunas.length}</p>
+                    <p className="text-xs text-slate-500 mt-1">Vacunas aplicadas</p>
+                  </div>
+                  <div className={`card text-center py-4 ${tratamientosActivos.length > 0 ? "ring-2 ring-yellow-400" : ""}`}>
+                    <p className="text-2xl font-bold text-yellow-600">{tratamientosActivos.length}</p>
+                    <p className="text-xs text-slate-500 mt-1">Tratamientos activos</p>
+                  </div>
+                  <div className={`card text-center py-4 ${vacunasVencidas.length > 0 ? "ring-2 ring-red-400" : ""}`}>
+                    <p className={`text-2xl font-bold ${vacunasVencidas.length > 0 ? "text-red-600" : "text-slate-400"}`}>
+                      {vacunasVencidas.length}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">Vacunas vencidas</p>
+                  </div>
+                </div>
+
+                {/* ── Alertas ── */}
+                {(vacunasVencidas.length > 0 || proximasVacunas.length > 0 || tratamientosActivos.length > 0 || citasPendientes.length > 0) && (
+                  <div className="space-y-2">
+                    {vacunasVencidas.length > 0 && (
+                      <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                        <p className="font-semibold text-red-700 mb-2">⚠️ Vacunas vencidas</p>
+                        <ul className="space-y-1">
+                          {vacunasVencidas.map((v) => (
+                            <li key={v.uuid} className="text-sm text-red-600">
+                              <span className="font-medium">{v.nombre_vacuna}</span>
+                              {" — "}vencida el {formatFecha(v.proxima_dosis!)}
+                              {" "}
+                              <span className="text-xs text-red-400">
+                                (hace {Math.abs(diasDesdeHoy(v.proxima_dosis) ?? 0)} días)
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {proximasVacunas.length > 0 && (
+                      <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
+                        <p className="font-semibold text-orange-700 mb-2">⏰ Próximas vacunas</p>
+                        <ul className="space-y-1">
+                          {proximasVacunas.map((v) => (
+                            <li key={v.uuid} className="text-sm text-orange-700">
+                              <span className="font-medium">{v.nombre_vacuna}</span>
+                              {" — "}{formatFecha(v.proxima_dosis!)}
+                              {" "}
+                              <span className="text-xs text-orange-500">
+                                ({diasDesdeHoy(v.proxima_dosis) === 0
+                                  ? "hoy"
+                                  : diasDesdeHoy(v.proxima_dosis) === 1
+                                  ? "mañana"
+                                  : `en ${diasDesdeHoy(v.proxima_dosis)} días`})
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {tratamientosActivos.length > 0 && (
+                      <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4">
+                        <p className="font-semibold text-yellow-700 mb-2">💊 Tratamientos en curso</p>
+                        <ul className="space-y-1">
+                          {tratamientosActivos.map((t) => (
+                            <li key={t.uuid} className="text-sm text-yellow-800">
+                              <span className="font-medium">{t.medicamento}</span>
+                              {" — "}{t.dosis} · {t.frecuencia}
+                              {t.fecha_fin && (
+                                <span className="text-xs text-yellow-600 ml-1">
+                                  (hasta {formatFecha(t.fecha_fin)})
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {citasPendientes.length > 0 && (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <p className="font-semibold text-slate-700 mb-2">📅 Próximas citas</p>
+                        <ul className="space-y-1">
+                          {citasPendientes.map((c) => (
+                            <li key={c.uuid} className="text-sm text-slate-700">
+                              <span className="font-medium">{c.motivo}</span>
+                              {" — "}{formatFechaHora(c.fecha_hora)}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Línea de tiempo ── */}
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-4">
+                    Historial cronológico
+                  </h3>
+
+                  {eventos.length === 0 ? (
+                    <div className="card text-center py-10">
+                      <p className="text-3xl mb-2">🐾</p>
+                      <p className="text-muted">Aún no hay registros para este paciente.</p>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      {/* Línea vertical */}
+                      <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-slate-200" />
+
+                      <div className="space-y-3">
+                        {eventos.map((ev, idx) => (
+                          <div key={`${ev.tipo}-${ev.uuid ?? idx}`} className="relative flex gap-4 pl-12">
+                            {/* Punto en la línea */}
+                            <div className={`absolute left-3.5 top-3 w-3 h-3 rounded-full ring-2 ring-white ${colorLinea[ev.tipo]}`} />
+
+                            {/* Tarjeta del evento */}
+                            <div className={`flex-1 rounded-xl p-3 ${colorCard[ev.tipo]}`}>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-base">{iconoEvento[ev.tipo]}</span>
+                                    {ev.tipo === "ficha" && ev.uuid ? (
+                                      <Link
+                                        href={`/fichas/${ev.uuid}`}
+                                        className="font-semibold text-sm text-green-800 hover:underline truncate"
+                                      >
+                                        {ev.titulo}
+                                      </Link>
+                                    ) : (
+                                      <p className="font-semibold text-sm text-slate-800 truncate">{ev.titulo}</p>
+                                    )}
+                                    {ev.tipo === "cita" && ev.estado && (
+                                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                        ev.estado === "completada" ? "bg-green-100 text-green-700" :
+                                        ev.estado === "cancelada" ? "bg-red-100 text-red-600" :
+                                        "bg-yellow-100 text-yellow-700"
+                                      }`}>
+                                        {ev.estado.charAt(0).toUpperCase() + ev.estado.slice(1)}
+                                      </span>
+                                    )}
+                                    {ev.tipo === "tratamiento" && ev.activo && (
+                                      <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">
+                                        Activo
+                                      </span>
+                                    )}
+                                  </div>
+                                  {ev.subtitulo && (
+                                    <p className="text-xs text-slate-500 mt-0.5 ml-6">{ev.subtitulo}</p>
+                                  )}
+                                  {ev.extra && (
+                                    <p className="text-xs text-slate-600 mt-1 ml-6 line-clamp-2">{ev.extra}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {tab === "vacunas" && (
             <div className="space-y-4">
