@@ -6,11 +6,7 @@ import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import BackButton from "@/app/components/BackButton";
 
-type Paciente = {
-  uuid: string;
-  nombre: string;
-  tutor_nombre: string;
-};
+type Paciente = { id: number; uuid: string; nombre: string; tutor_nombre: string };
 
 const formInicial = {
   paciente: "",
@@ -77,7 +73,7 @@ export default function NuevaVacunaPage() {
       const res = await apiFetch("/vacunas/", {
         method: "POST",
         body: JSON.stringify({
-          paciente: form.paciente,
+          paciente: pacienteSeleccionado?.id,
           nombre_vacuna: form.nombre_vacuna,
           fecha_aplicacion: form.fecha_aplicacion,
           proxima_dosis: form.proxima_dosis || null,
@@ -91,7 +87,14 @@ export default function NuevaVacunaPage() {
       }
 
       toast.success("Vacuna registrada correctamente");
-      router.push(fichaParam ? `/fichas/${fichaParam}` : "/fichas");
+
+      if (fichaParam) {
+        router.push(`/fichas/${fichaParam}`);
+      } else if (pacienteParam) {
+        router.push(`/pacientes/${pacienteParam}`);
+      } else {
+        router.push("/pacientes");
+      }
     } catch {
       toast.error("Error de conexión");
     } finally {
@@ -100,7 +103,11 @@ export default function NuevaVacunaPage() {
   };
 
   const pacienteSeleccionado = pacientes.find((p) => p.uuid === form.paciente);
-  const backHref = fichaParam ? `/fichas/${fichaParam}` : "/fichas";
+  const backHref = fichaParam
+    ? `/fichas/${fichaParam}`
+    : pacienteParam
+    ? `/pacientes/${pacienteParam}`
+    : "/pacientes";
 
   return (
     <main className="min-h-screen bg-slate-100 p-8">

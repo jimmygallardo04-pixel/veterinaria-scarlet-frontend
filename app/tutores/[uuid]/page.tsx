@@ -190,7 +190,15 @@ export default function DetalleTutorPage() {
       });
 
       if (!res.ok) {
-        toast.error("No se pudo crear la mascota");
+        try {
+          const err = await res.json();
+          const msg = Object.entries(err)
+            .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`)
+            .join(" | ");
+          toast.error(`Error: ${msg}`);
+        } catch {
+          toast.error("No se pudo crear la mascota");
+        }
         return;
       }
 

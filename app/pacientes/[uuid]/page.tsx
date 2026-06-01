@@ -5,11 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 import { API_ROUTES, DROPDOWN_PAGE_SIZE } from "@/lib/constants";
 import type { Opcion } from "@/lib/types";
 import BackButton from "@/app/components/BackButton";
 import PageSkeleton from "@/app/components/PageSkeleton";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
+import MinimizableSection from "@/app/components/MinimizableSection";
 import PacienteForm, { type PacienteFormValues } from "@/app/components/PacienteForm";
 import { formatFechaHora, formatEdad } from "@/lib/utils";
 
@@ -87,13 +89,27 @@ type Tratamiento = {
   } | null;
 };
 
-type Tab = "vacunas" | "fichas" | "citas" | "tratamientos";
+type Archivo = {
+  id: number;
+  uuid: string;
+  tipo: number;
+  tipo_nombre: string;
+  archivo_url: string;
+  storage_path?: string | null;
+  fecha: string;
+  observaciones?: string | null;
+};
+
+type TipoArchivo = { id: number; nombre: string };
+
+type Tab = "vacunas" | "fichas" | "citas" | "tratamientos" | "documentos";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "vacunas", label: "Vacunas", icon: "💉" },
   { id: "fichas", label: "Fichas", icon: "📋" },
   { id: "citas", label: "Citas", icon: "📅" },
   { id: "tratamientos", label: "Tratamientos", icon: "💊" },
+  { id: "documentos", label: "Documentos", icon: "📄" },
 ];
 
 const ESTADO_BADGE: Record<string, string> = {
@@ -112,6 +128,8 @@ export default function DetallePacientePage() {
   const [fichas, setFichas] = useState<Ficha[]>([]);
   const [citas, setCitas] = useState<Cita[]>([]);
   const [tratamientos, setTratamientos] = useState<Tratamiento[]>([]);
+  const [archivos, setArchivos] = useState<Archivo[]>([]);
+  const [tiposArchivo, setTiposArchivo] = useState<TipoArchivo[]>([]);
 
   const [tutores, setTutores] = useState<Opcion[]>([]);
   const [especies, setEspecies] = useState<Opcion[]>([]);
@@ -135,7 +153,7 @@ export default function DetallePacientePage() {
 
   const [vacunaForm, setVacunaForm] = useState(vacunaFormInicial);
 
-  const [vacunaEditando, setVacunaEditando] = useState<number | null>(null);
+  const [vacunaEditando, setVacunaEditando] = useState<string | null>(null);
   const [vacunaEditForm, setVacunaEditForm] = useState({
     nombre_vacuna: "",
     fecha_aplicacion: "",
@@ -144,9 +162,9 @@ export default function DetallePacientePage() {
   });
 
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [vacunaAEliminar, setVacunaAEliminar] = useState<number | null>(null);
+  const [vacunaAEliminar, setVacunaAEliminar] = useState<string | null>(null);
 
-  const [tratamientoEditando, setTratamientoEditando] = useState<number | null>(null);
+  const [tratamientoEditando, setTratamientoEditando] = useState<string | null>(null);
   const [tratamientoEditForm, setTratamientoEditForm] = useState({
     medicamento: "",
     dosis: "",
@@ -156,7 +174,50 @@ export default function DetallePacientePage() {
   });
 
   const [confirmTratamiento, setConfirmTratamiento] = useState(false);
-  const [tratamientoAEliminar, setTratamientoAEliminar] = useState<number | null>(null);
+  const [tratamientoAEliminar, setTratamientoAEliminar] = useState<string | null>(null);
+
+  // Form nueva cita
+  const citaFormInicial = {
+    fecha_hora: (() => { const d = new Date(); d.setDate(d.getDate() + 1); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); })(),
+    motivo: "",
+    observaciones: "",
+    estado: "pendiente",
+  };
+  const [citaForm, setCitaForm] = useState(citaFormInicial);
+
+  // Form nueva ficha
+  const fichaFormInicial = {
+    fecha: (() => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); })(),
+    motivo_consulta: "",
+    anamnesis: "",
+    peso_kg: "",
+    temperatura: "",
+    frecuencia_cardiaca: "",
+    frecuencia_respiratoria: "",
+    diagnostico: "",
+    tratamiento: "",
+    indicaciones: "",
+    observaciones: "",
+  };
+  const [fichaForm, setFichaForm] = useState(fichaFormInicial);
+
+  // Form nuevo tratamiento
+  const tratamientoFormInicial = {
+    medicamento: "", dosis: "", frecuencia: "",
+    fecha_inicio: "", fecha_fin: "", indicaciones: "",
+  };
+  const [tratamientoForm, setTratamientoForm] = useState(tratamientoFormInicial);
+
+  // Form nuevo documento
+  const BUCKET_NAME = "documentos-veterinaria-scarlet";
+  const documentoFormInicial = {
+    tipo: "", archivo: null as File | null,
+    fecha: new Date().toISOString().slice(0, 10), observaciones: "",
+  };
+  const [documentoForm, setDocumentoForm] = useState(documentoFormInicial);
+  const [subiendoDoc, setSubiendoDoc] = useState(false);
+  const [confirmEliminarDoc, setConfirmEliminarDoc] = useState(false);
+  const [docAEliminar, setDocAEliminar] = useState<string | null>(null);
 
   const cargarCatalogos = async () => {
     const [resTutores, resEspecies, resSexos] = await Promise.all([
@@ -183,41 +244,25 @@ export default function DetallePacientePage() {
 
   const cargarTodo = async () => {
     setLoading(true);
-
     try {
-      const [resPaciente, resVacunas, resFichas, resCitas, resTratamientos] =
+      const [resPaciente, resVacunas, resFichas, resCitas, resTratamientos, resArchivos, resTipos] =
         await Promise.all([
           apiFetch(`/pacientes/${pacienteUuid}/`),
           apiFetch(`/vacunas/?paciente=${pacienteUuid}&page_size=200`),
           apiFetch(`/fichas/?paciente=${pacienteUuid}&page_size=200`),
           apiFetch(`/citas/?paciente=${pacienteUuid}&page_size=200`),
           apiFetch(`/tratamientos/?paciente=${pacienteUuid}&page_size=200`),
+          apiFetch(`/archivos/?paciente=${pacienteUuid}&page_size=200`),
+          apiFetch(`/tipos-archivo/?page_size=100`),
         ]);
 
-      if (resPaciente.ok) {
-        const data = await resPaciente.json();
-        setPaciente(data);
-      }
-
-      if (resVacunas.ok) {
-        const d = await resVacunas.json();
-        setVacunas(d.results ?? d);
-      }
-
-      if (resFichas.ok) {
-        const d = await resFichas.json();
-        setFichas(d.results ?? d);
-      }
-
-      if (resCitas.ok) {
-        const d = await resCitas.json();
-        setCitas(d.results ?? d);
-      }
-
-      if (resTratamientos.ok) {
-        const d = await resTratamientos.json();
-        setTratamientos(d.results ?? d);
-      }
+      if (resPaciente.ok) setPaciente(await resPaciente.json());
+      if (resVacunas.ok) { const d = await resVacunas.json(); setVacunas(d.results ?? d); }
+      if (resFichas.ok) { const d = await resFichas.json(); setFichas(d.results ?? d); }
+      if (resCitas.ok) { const d = await resCitas.json(); setCitas(d.results ?? d); }
+      if (resTratamientos.ok) { const d = await resTratamientos.json(); setTratamientos(d.results ?? d); }
+      if (resArchivos.ok) { const d = await resArchivos.json(); setArchivos(d.results ?? d); }
+      if (resTipos.ok) { const d = await resTipos.json(); setTiposArchivo(d.results ?? d); }
     } catch {
       toast.error("Error cargando datos del paciente");
     } finally {
@@ -305,7 +350,7 @@ export default function DetallePacientePage() {
       const res = await apiFetch("/vacunas/", {
         method: "POST",
         body: JSON.stringify({
-          paciente: pacienteUuid,
+          paciente: paciente?.id,
           nombre_vacuna: vacunaForm.nombre_vacuna,
           fecha_aplicacion: vacunaForm.fecha_aplicacion,
           proxima_dosis: vacunaForm.proxima_dosis || null,
@@ -335,21 +380,12 @@ export default function DetallePacientePage() {
 
   const eliminarVacuna = async () => {
     if (!vacunaAEliminar) return;
-
     setConfirmOpen(false);
-
     try {
-      const res = await apiFetch(`/vacunas/${vacunaAEliminar}/`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) {
-        toast.error("No se pudo eliminar la vacuna");
-        return;
-      }
-
+      const res = await apiFetch(`/vacunas/${vacunaAEliminar}/`, { method: "DELETE" });
+      if (!res.ok) { toast.error("No se pudo eliminar la vacuna"); return; }
       toast.success("Vacuna eliminada");
-      setVacunas((v) => v.filter((x) => x.id !== vacunaAEliminar));
+      setVacunas((v) => v.filter((x) => x.uuid !== vacunaAEliminar));
     } catch {
       toast.error("Error de conexión");
     } finally {
@@ -358,7 +394,7 @@ export default function DetallePacientePage() {
   };
 
   const iniciarEdicionVacuna = (v: Vacuna) => {
-    setVacunaEditando(v.id);
+    setVacunaEditando(v.uuid);
     setVacunaEditForm({
       nombre_vacuna: v.nombre_vacuna,
       fecha_aplicacion: v.fecha_aplicacion,
@@ -367,9 +403,9 @@ export default function DetallePacientePage() {
     });
   };
 
-  const editarVacuna = async (id: number) => {
+  const editarVacuna = async (uuid: string) => {
     try {
-      const res = await apiFetch(`/vacunas/${id}/`, {
+      const res = await apiFetch(`/vacunas/${uuid}/`, {
         method: "PATCH",
         body: JSON.stringify({
           nombre_vacuna: vacunaEditForm.nombre_vacuna,
@@ -378,20 +414,15 @@ export default function DetallePacientePage() {
           observaciones: vacunaEditForm.observaciones || null,
         }),
       });
-
       if (!res.ok) {
-        toast.error("No se pudo editar la vacuna");
+        const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+        toast.error(`Error: ${err.detail ?? JSON.stringify(err)}`);
         return;
       }
-
       toast.success("Vacuna actualizada");
       setVacunaEditando(null);
-
       const r = await apiFetch(`/vacunas/?paciente=${pacienteUuid}&page_size=200`);
-      if (r.ok) {
-        const d = await r.json();
-        setVacunas(d.results ?? d);
-      }
+      if (r.ok) { const d = await r.json(); setVacunas(d.results ?? d); }
     } catch {
       toast.error("Error de conexión");
     }
@@ -399,8 +430,177 @@ export default function DetallePacientePage() {
 
   const vacunaVencida = (fecha: string) => new Date(fecha) < new Date();
 
+  // ── Crear cita ────────────────────────────────────────────────────────────
+  const crearCita = async () => {
+    if (!citaForm.fecha_hora || !citaForm.motivo) {
+      toast.warning("Fecha/hora y motivo son obligatorios");
+      return;
+    }
+    if (!paciente) { toast.error("Paciente no cargado"); return; }
+    try {
+      setGuardando(true);
+      const fechaISO = new Date(citaForm.fecha_hora).toISOString().replace("Z", "").slice(0, 19);
+      const res = await apiFetch("/citas/", {
+        method: "POST",
+        body: JSON.stringify({
+          paciente: paciente.id,
+          tutor: paciente.tutor,
+          fecha_hora: fechaISO,
+          motivo: citaForm.motivo,
+          observaciones: citaForm.observaciones || null,
+          estado: citaForm.estado,
+        }),
+      });
+      if (!res.ok) { toast.error("No se pudo crear la cita"); return; }
+      toast.success("Cita agendada correctamente");
+      setCitaForm(citaFormInicial);
+      const r = await apiFetch(`/citas/?paciente=${pacienteUuid}&page_size=200`);
+      if (r.ok) { const d = await r.json(); setCitas(d.results ?? d); }
+    } catch {
+      toast.error("Error de conexión");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  // ── Crear ficha ───────────────────────────────────────────────────────────
+  const crearFicha = async () => {
+    if (!fichaForm.motivo_consulta) {
+      toast.warning("El motivo de consulta es obligatorio");
+      return;
+    }
+    try {
+      setGuardando(true);
+      const res = await apiFetch("/fichas/", {
+        method: "POST",
+        body: JSON.stringify({
+          paciente: paciente?.id,
+          fecha: new Date(fichaForm.fecha).toISOString(),
+          motivo_consulta: fichaForm.motivo_consulta,
+          anamnesis: fichaForm.anamnesis || null,
+          peso_kg: fichaForm.peso_kg || null,
+          temperatura: fichaForm.temperatura || null,
+          frecuencia_cardiaca: fichaForm.frecuencia_cardiaca ? Number(fichaForm.frecuencia_cardiaca) : null,
+          frecuencia_respiratoria: fichaForm.frecuencia_respiratoria ? Number(fichaForm.frecuencia_respiratoria) : null,
+          diagnostico: fichaForm.diagnostico || null,
+          tratamiento: fichaForm.tratamiento || null,
+          indicaciones: fichaForm.indicaciones || null,
+          observaciones: fichaForm.observaciones || null,
+        }),
+      });
+      if (!res.ok) { toast.error("No se pudo crear la ficha"); return; }
+      const data = await res.json();
+      toast.success("Ficha creada correctamente");
+      setFichaForm(fichaFormInicial);
+      const r = await apiFetch(`/fichas/?paciente=${pacienteUuid}&page_size=200`);
+      if (r.ok) { const d = await r.json(); setFichas(d.results ?? d); }
+      // Navegar a la ficha recién creada
+      router.push(`/fichas/${data.uuid}`);
+    } catch {
+      toast.error("Error de conexión");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  // ── Crear tratamiento ─────────────────────────────────────────────────────
+  const crearTratamiento = async () => {
+    if (!tratamientoForm.medicamento || !tratamientoForm.dosis || !tratamientoForm.frecuencia || !tratamientoForm.fecha_inicio) {
+      toast.warning("Medicamento, dosis, frecuencia y fecha de inicio son obligatorios");
+      return;
+    }
+    try {
+      setGuardando(true);
+      const res = await apiFetch("/tratamientos/", {
+        method: "POST",
+        body: JSON.stringify({
+          paciente: paciente?.id,
+          medicamento: tratamientoForm.medicamento,
+          dosis: tratamientoForm.dosis,
+          frecuencia: tratamientoForm.frecuencia,
+          fecha_inicio: tratamientoForm.fecha_inicio,
+          fecha_fin: tratamientoForm.fecha_fin || null,
+          indicaciones: tratamientoForm.indicaciones || null,
+        }),
+      });
+      if (!res.ok) { toast.error("No se pudo registrar el tratamiento"); return; }
+      toast.success("Tratamiento registrado");
+      setTratamientoForm(tratamientoFormInicial);
+      const r = await apiFetch(`/tratamientos/?paciente=${pacienteUuid}&page_size=200`);
+      if (r.ok) { const d = await r.json(); setTratamientos(d.results ?? d); }
+    } catch {
+      toast.error("Error de conexión");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  // ── Guardar documento ─────────────────────────────────────────────────────
+  const guardarDocumento = async () => {
+    if (!documentoForm.tipo || !documentoForm.archivo || !documentoForm.fecha) {
+      toast.warning("Tipo, archivo y fecha son obligatorios");
+      return;
+    }
+    const file = documentoForm.archivo;
+    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+      toast.error("Solo se permiten imágenes o PDF");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) { toast.error("Máximo 10MB"); return; }
+
+    try {
+      setSubiendoDoc(true);
+      const ext = file.name.split(".").pop();
+      const fileName = `paciente_${paciente?.id}/${Date.now()}_${crypto.randomUUID()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(fileName, file);
+      if (uploadError) { toast.error("Error subiendo archivo"); return; }
+      const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(fileName);
+      const res = await apiFetch("/archivos/", {
+        method: "POST",
+        body: JSON.stringify({
+          paciente: paciente?.id,
+          tipo: Number(documentoForm.tipo),
+          archivo_url: data.publicUrl,
+          storage_path: fileName,
+          fecha: documentoForm.fecha,
+          observaciones: documentoForm.observaciones || null,
+        }),
+      });
+      if (!res.ok) { toast.error("Error guardando documento"); return; }
+      toast.success("Documento guardado");
+      setDocumentoForm({ ...documentoFormInicial, fecha: new Date().toISOString().slice(0, 10) });
+      const r = await apiFetch(`/archivos/?paciente=${pacienteUuid}&page_size=200`);
+      if (r.ok) { const d = await r.json(); setArchivos(d.results ?? d); }
+    } catch {
+      toast.error("Error de conexión");
+    } finally {
+      setSubiendoDoc(false);
+    }
+  };
+
+  // ── Eliminar documento ────────────────────────────────────────────────────
+  const eliminarDocumento = async () => {
+    if (!docAEliminar) return;
+    setConfirmEliminarDoc(false);
+    const doc = archivos.find((a) => a.uuid === docAEliminar);
+    if (!doc) { setDocAEliminar(null); return; }
+    try {
+      if (doc.storage_path) {
+        await supabase.storage.from(BUCKET_NAME).remove([doc.storage_path]);
+      }
+      const res = await apiFetch(`/archivos/${docAEliminar}/`, { method: "DELETE" });
+      if (!res.ok) { toast.error("No se pudo eliminar el documento"); return; }
+      toast.success("Documento eliminado");
+      setArchivos((a) => a.filter((x) => x.uuid !== docAEliminar));
+    } catch {
+      toast.error("Error de conexión");
+    } finally {
+      setDocAEliminar(null);
+    }
+  };
+
   const iniciarEdicionTratamiento = (t: Tratamiento) => {
-    setTratamientoEditando(t.id);
+    setTratamientoEditando(t.uuid);
     setTratamientoEditForm({
       medicamento: t.medicamento,
       dosis: t.dosis,
@@ -410,9 +610,9 @@ export default function DetallePacientePage() {
     });
   };
 
-  const editarTratamiento = async (id: number) => {
+  const editarTratamiento = async (uuid: string) => {
     try {
-      const res = await apiFetch(`/tratamientos/${id}/`, {
+      const res = await apiFetch(`/tratamientos/${uuid}/`, {
         method: "PATCH",
         body: JSON.stringify({
           medicamento: tratamientoEditForm.medicamento,
@@ -422,20 +622,11 @@ export default function DetallePacientePage() {
           fecha_fin: tratamientoEditForm.fecha_fin || null,
         }),
       });
-
-      if (!res.ok) {
-        toast.error("No se pudo editar el tratamiento");
-        return;
-      }
-
+      if (!res.ok) { toast.error("No se pudo editar el tratamiento"); return; }
       toast.success("Tratamiento actualizado");
       setTratamientoEditando(null);
-
       const r = await apiFetch(`/tratamientos/?paciente=${pacienteUuid}&page_size=200`);
-      if (r.ok) {
-        const d = await r.json();
-        setTratamientos(d.results ?? d);
-      }
+      if (r.ok) { const d = await r.json(); setTratamientos(d.results ?? d); }
     } catch {
       toast.error("Error de conexión");
     }
@@ -443,21 +634,12 @@ export default function DetallePacientePage() {
 
   const eliminarTratamiento = async () => {
     if (!tratamientoAEliminar) return;
-
     setConfirmTratamiento(false);
-
     try {
-      const res = await apiFetch(`/tratamientos/${tratamientoAEliminar}/`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) {
-        toast.error("No se pudo eliminar el tratamiento");
-        return;
-      }
-
+      const res = await apiFetch(`/tratamientos/${tratamientoAEliminar}/`, { method: "DELETE" });
+      if (!res.ok) { toast.error("No se pudo eliminar el tratamiento"); return; }
       toast.success("Tratamiento eliminado");
-      setTratamientos((t) => t.filter((x) => x.id !== tratamientoAEliminar));
+      setTratamientos((t) => t.filter((x) => x.uuid !== tratamientoAEliminar));
     } catch {
       toast.error("Error de conexión");
     } finally {
@@ -513,10 +695,6 @@ export default function DetallePacientePage() {
             >
               Eliminar paciente
             </button>
-
-            <Link href={`/fichas/nueva?paciente=${pacienteUuid}`} className="btn-primary">
-              + Nueva ficha
-            </Link>
           </div>
         </div>
 
@@ -611,22 +789,6 @@ export default function DetallePacientePage() {
           </section>
         )}
 
-        {/* Acciones rápidas */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <Link href={`/fichas/nueva?paciente=${pacienteUuid}`} className="btn-primary text-sm">
-            + Nueva ficha
-          </Link>
-          <Link href={`/vacunas/nueva?paciente=${pacienteUuid}`} className="btn-secondary text-sm">
-            + Vacuna
-          </Link>
-          <Link href={`/tratamientos/nuevo?paciente=${pacienteUuid}`} className="btn-secondary text-sm">
-            + Tratamiento
-          </Link>
-          <Link href={`/archivos/nuevo?paciente=${pacienteUuid}`} className="btn-secondary text-sm">
-            + Documento
-          </Link>
-        </div>
-
         {/* Tabs */}
         <div>
           <div className="flex gap-1 border-b border-slate-200 mb-4 overflow-x-auto">
@@ -638,7 +800,9 @@ export default function DetallePacientePage() {
                   ? fichas.length
                   : t.id === "citas"
                   ? citas.length
-                  : tratamientos.length;
+                  : t.id === "tratamientos"
+                  ? tratamientos.length
+                  : archivos.length;
 
               return (
                 <button
@@ -670,61 +834,43 @@ export default function DetallePacientePage() {
 
           {tab === "vacunas" && (
             <div className="space-y-4">
-              <div className="card">
-                <h3 className="subtitle mb-4">Registrar vacuna</h3>
-
+              <MinimizableSection id="paciente-vacuna-form" title="➕ Registrar vacuna" persistent>
                 <div className="grid gap-3 md:grid-cols-2">
                   <input
                     className="input"
                     placeholder="Nombre vacuna *"
                     value={vacunaForm.nombre_vacuna}
-                    onChange={(e) =>
-                      setVacunaForm({ ...vacunaForm, nombre_vacuna: e.target.value })
-                    }
+                    onChange={(e) => setVacunaForm({ ...vacunaForm, nombre_vacuna: e.target.value })}
                   />
-
                   <div>
-                    <label className="block text-xs text-slate-500 mb-1">
-                      Fecha de aplicación *
-                    </label>
+                    <label className="block text-xs text-slate-500 mb-1">Fecha de aplicación *</label>
                     <input
                       type="date"
                       className="input"
                       value={vacunaForm.fecha_aplicacion}
-                      onChange={(e) =>
-                        setVacunaForm({ ...vacunaForm, fecha_aplicacion: e.target.value })
-                      }
+                      onChange={(e) => setVacunaForm({ ...vacunaForm, fecha_aplicacion: e.target.value })}
                     />
                   </div>
-
                   <div>
-                    <label className="block text-xs text-slate-500 mb-1">
-                      Próxima dosis
-                    </label>
+                    <label className="block text-xs text-slate-500 mb-1">Próxima dosis</label>
                     <input
                       type="date"
                       className="input"
                       value={vacunaForm.proxima_dosis}
-                      onChange={(e) =>
-                        setVacunaForm({ ...vacunaForm, proxima_dosis: e.target.value })
-                      }
+                      onChange={(e) => setVacunaForm({ ...vacunaForm, proxima_dosis: e.target.value })}
                     />
                   </div>
-
                   <textarea
                     className="input"
                     placeholder="Observaciones"
                     value={vacunaForm.observaciones}
-                    onChange={(e) =>
-                      setVacunaForm({ ...vacunaForm, observaciones: e.target.value })
-                    }
+                    onChange={(e) => setVacunaForm({ ...vacunaForm, observaciones: e.target.value })}
                   />
                 </div>
-
                 <button onClick={crearVacuna} disabled={guardando} className="btn-primary mt-4">
                   {guardando ? "Guardando..." : "Guardar vacuna"}
                 </button>
-              </div>
+              </MinimizableSection>
 
               {vacunas.length === 0 ? (
                 <div className="card text-center py-8">
@@ -769,7 +915,7 @@ export default function DetallePacientePage() {
 
                           <button
                             onClick={() => {
-                              setVacunaAEliminar(v.id);
+                              setVacunaAEliminar(v.uuid);
                               setConfirmOpen(true);
                             }}
                             className="btn-danger"
@@ -779,7 +925,7 @@ export default function DetallePacientePage() {
                         </div>
                       </div>
 
-                      {vacunaEditando === v.id && (
+                      {vacunaEditando === v.uuid && (
                         <div className="mt-4 border-t border-slate-100 pt-4">
                           <h4 className="text-sm font-semibold text-slate-700 mb-3">
                             Editar vacuna
@@ -836,7 +982,7 @@ export default function DetallePacientePage() {
                           </div>
 
                           <div className="flex gap-2 mt-3">
-                            <button onClick={() => editarVacuna(v.id)} className="btn-primary">
+                            <button onClick={() => editarVacuna(v.uuid)} className="btn-primary">
                               Guardar cambios
                             </button>
                             <button onClick={() => setVacunaEditando(null)} className="btn-secondary">
@@ -853,215 +999,397 @@ export default function DetallePacientePage() {
           )}
 
           {tab === "fichas" && (
-            <div className="space-y-2">
+            <div className="space-y-4">
+              <MinimizableSection id="paciente-ficha-form" title="➕ Nueva ficha clínica" persistent>
+                {/* Signos vitales */}
+                <div className="grid gap-3 md:grid-cols-4 mb-3">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Peso (kg)</label>
+                    <input className="input" type="number" step="0.01" placeholder="Ej: 4.5" value={fichaForm.peso_kg} onChange={(e) => setFichaForm({ ...fichaForm, peso_kg: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Temperatura (°C)</label>
+                    <input className="input" type="number" step="0.1" placeholder="Ej: 38.5" value={fichaForm.temperatura} onChange={(e) => setFichaForm({ ...fichaForm, temperatura: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Frec. cardíaca (lpm)</label>
+                    <input className="input" type="number" placeholder="Ej: 80" value={fichaForm.frecuencia_cardiaca} onChange={(e) => setFichaForm({ ...fichaForm, frecuencia_cardiaca: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Frec. respiratoria (rpm)</label>
+                    <input className="input" type="number" placeholder="Ej: 20" value={fichaForm.frecuencia_respiratoria} onChange={(e) => setFichaForm({ ...fichaForm, frecuencia_respiratoria: e.target.value })} />
+                  </div>
+                </div>
+                {/* Consulta */}
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Fecha y hora *</label>
+                    <input className="input w-full" type="datetime-local" value={fichaForm.fecha} onChange={(e) => setFichaForm({ ...fichaForm, fecha: e.target.value })} />
+                  </div>
+                  <input className="input w-full" placeholder="Motivo de consulta *" value={fichaForm.motivo_consulta} onChange={(e) => setFichaForm({ ...fichaForm, motivo_consulta: e.target.value })} />
+                  <textarea className="input w-full" rows={2} placeholder="Anamnesis" value={fichaForm.anamnesis} onChange={(e) => setFichaForm({ ...fichaForm, anamnesis: e.target.value })} />
+                  <textarea className="input w-full" rows={2} placeholder="Diagnóstico" value={fichaForm.diagnostico} onChange={(e) => setFichaForm({ ...fichaForm, diagnostico: e.target.value })} />
+                  <textarea className="input w-full" rows={2} placeholder="Tratamiento" value={fichaForm.tratamiento} onChange={(e) => setFichaForm({ ...fichaForm, tratamiento: e.target.value })} />
+                  <textarea className="input w-full" rows={2} placeholder="Indicaciones para el tutor" value={fichaForm.indicaciones} onChange={(e) => setFichaForm({ ...fichaForm, indicaciones: e.target.value })} />
+                  <textarea className="input w-full" rows={2} placeholder="Observaciones" value={fichaForm.observaciones} onChange={(e) => setFichaForm({ ...fichaForm, observaciones: e.target.value })} />
+                </div>
+                <button onClick={crearFicha} disabled={guardando} className="btn-primary mt-4">
+                  {guardando ? "Guardando..." : "Guardar ficha"}
+                </button>
+              </MinimizableSection>
+
               {fichas.length === 0 ? (
                 <div className="card text-center py-8">
-                  <p className="text-muted mb-3">Sin fichas clínicas.</p>
-                  <Link href={`/fichas/nueva?paciente=${pacienteUuid}`} className="btn-primary">
-                    Crear primera ficha
-                  </Link>
+                  <p className="text-muted">Sin fichas clínicas registradas.</p>
                 </div>
               ) : (
-                fichas.map((f) => (
-                  <Link
-                    key={f.uuid}
-                    href={`/fichas/${f.uuid}`}
-                    className="card flex items-center justify-between gap-4 hover:shadow-md transition-shadow"
-                  >
-                    <div>
-                      <p className="text-muted">{formatFechaHora(f.fecha)}</p>
-                      <p className="font-semibold text-slate-900 mt-0.5">
-                        {f.motivo_consulta}
-                      </p>
-                      {f.diagnostico && (
-                        <p className="text-muted mt-0.5">Dx: {f.diagnostico}</p>
-                      )}
-                    </div>
-                    <span className="text-slate-400 shrink-0">→</span>
-                  </Link>
-                ))
+                <div className="space-y-2">
+                  {fichas.map((f) => (
+                    <Link
+                      key={f.uuid}
+                      href={`/fichas/${f.uuid}`}
+                      className="card flex items-center justify-between gap-4 hover:shadow-md transition-shadow"
+                    >
+                      <div>
+                        <p className="text-muted">{formatFechaHora(f.fecha)}</p>
+                        <p className="font-semibold text-slate-900 mt-0.5">{f.motivo_consulta}</p>
+                        {f.diagnostico && <p className="text-muted mt-0.5">Dx: {f.diagnostico}</p>}
+                      </div>
+                      <span className="text-slate-400 shrink-0">→</span>
+                    </Link>
+                  ))}
+                </div>
               )}
             </div>
           )}
 
           {tab === "citas" && (
-            <div className="space-y-2">
+            <div className="space-y-4">
+              <MinimizableSection id="paciente-cita-form" title="➕ Agendar cita" persistent>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Fecha y hora *</label>
+                    <input
+                      type="datetime-local"
+                      className="input w-full"
+                      value={citaForm.fecha_hora}
+                      onChange={(e) => setCitaForm({ ...citaForm, fecha_hora: e.target.value })}
+                    />
+                  </div>
+                  <input
+                    className="input w-full"
+                    placeholder="Motivo * (ej: Control anual, vacunación...)"
+                    value={citaForm.motivo}
+                    onChange={(e) => setCitaForm({ ...citaForm, motivo: e.target.value })}
+                  />
+                  <textarea
+                    className="input w-full"
+                    rows={2}
+                    placeholder="Observaciones"
+                    value={citaForm.observaciones}
+                    onChange={(e) => setCitaForm({ ...citaForm, observaciones: e.target.value })}
+                  />
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Estado</label>
+                    <select
+                      className="input w-full"
+                      value={citaForm.estado}
+                      onChange={(e) => setCitaForm({ ...citaForm, estado: e.target.value })}
+                    >
+                      <option value="pendiente">Pendiente</option>
+                      <option value="completada">Completada</option>
+                      <option value="cancelada">Cancelada</option>
+                    </select>
+                  </div>
+                </div>
+                <button onClick={crearCita} disabled={guardando} className="btn-primary mt-4">
+                  {guardando ? "Guardando..." : "Agendar cita"}
+                </button>
+              </MinimizableSection>
+
               {citas.length === 0 ? (
                 <div className="card text-center py-8">
                   <p className="text-muted">Sin citas registradas.</p>
                 </div>
               ) : (
-                citas.map((c) => (
-                  <div key={c.uuid} className="card flex items-center justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={ESTADO_BADGE[c.estado] ?? "badge-slate"}>
-                          {c.estado.charAt(0).toUpperCase() + c.estado.slice(1)}
-                        </span>
-                        <p className="text-muted">{formatFechaHora(c.fecha_hora)}</p>
+                <div className="space-y-2">
+                  {citas.map((c) => (
+                    <div key={c.uuid} className="card flex items-center justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={ESTADO_BADGE[c.estado] ?? "badge-slate"}>
+                            {c.estado.charAt(0).toUpperCase() + c.estado.slice(1)}
+                          </span>
+                          <p className="text-muted">{formatFechaHora(c.fecha_hora)}</p>
+                        </div>
+                        <p className="font-semibold text-slate-900">{c.motivo}</p>
                       </div>
-                      <p className="font-semibold text-slate-900">{c.motivo}</p>
+                      {c.estado === "pendiente" && (
+                        <Link
+                          href={`/fichas/nueva?paciente=${pacienteUuid}&cita=${c.uuid}`}
+                          className="btn-primary shrink-0"
+                        >
+                          Atender
+                        </Link>
+                      )}
                     </div>
-
-                    {c.estado === "pendiente" && (
-                      <Link
-                        href={`/fichas/nueva?paciente=${pacienteUuid}&cita=${c.uuid}`}
-                        className="btn-primary shrink-0"
-                      >
-                        Atender
-                      </Link>
-                    )}
-                  </div>
-                ))
+                  ))}
+                </div>
               )}
             </div>
           )}
 
           {tab === "tratamientos" && (
-            <div className="space-y-2">
+            <div className="space-y-4">
+              <MinimizableSection id="paciente-tratamiento-form" title="➕ Registrar tratamiento" persistent>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <input
+                    className="input md:col-span-2"
+                    placeholder="Medicamento *"
+                    value={tratamientoForm.medicamento}
+                    onChange={(e) => setTratamientoForm({ ...tratamientoForm, medicamento: e.target.value })}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Dosis * (ej: 5mg)"
+                    value={tratamientoForm.dosis}
+                    onChange={(e) => setTratamientoForm({ ...tratamientoForm, dosis: e.target.value })}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Frecuencia * (ej: cada 12h)"
+                    value={tratamientoForm.frecuencia}
+                    onChange={(e) => setTratamientoForm({ ...tratamientoForm, frecuencia: e.target.value })}
+                  />
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Fecha de inicio *</label>
+                    <input
+                      type="date"
+                      className="input"
+                      value={tratamientoForm.fecha_inicio}
+                      onChange={(e) => setTratamientoForm({ ...tratamientoForm, fecha_inicio: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Fecha de fin</label>
+                    <input
+                      type="date"
+                      className="input"
+                      value={tratamientoForm.fecha_fin}
+                      onChange={(e) => setTratamientoForm({ ...tratamientoForm, fecha_fin: e.target.value })}
+                    />
+                  </div>
+                  <textarea
+                    className="input md:col-span-2"
+                    placeholder="Indicaciones"
+                    rows={2}
+                    value={tratamientoForm.indicaciones}
+                    onChange={(e) => setTratamientoForm({ ...tratamientoForm, indicaciones: e.target.value })}
+                  />
+                </div>
+                <button onClick={crearTratamiento} disabled={guardando} className="btn-primary mt-4">
+                  {guardando ? "Guardando..." : "Guardar tratamiento"}
+                </button>
+              </MinimizableSection>
+
               {tratamientos.length === 0 ? (
                 <div className="card text-center py-8">
-                  <p className="text-muted mb-3">Sin tratamientos registrados.</p>
-                  <Link href={`/tratamientos/nuevo?paciente=${pacienteUuid}`} className="btn-primary">
-                    Agregar tratamiento
-                  </Link>
+                  <p className="text-muted">Sin tratamientos registrados.</p>
                 </div>
               ) : (
-                tratamientos.map((t) => {
-                  const activo = !t.fecha_fin || new Date(t.fecha_fin) >= new Date();
-
-                  return (
-                    <div key={t.uuid} className="card">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="font-semibold text-slate-900">{t.medicamento}</p>
-                            {activo && <span className="badge-green">Activo</span>}
-                            {t.ficha_clinica_info && (
-                              <Link
-                                href={`/fichas/${t.ficha_clinica_info.uuid}`}
-                                className="badge-blue hover:underline"
-                              >
-                                Ficha {new Date(t.ficha_clinica_info.fecha).toLocaleDateString()}
-                              </Link>
-                            )}
+                <div className="space-y-2">
+                  {tratamientos.map((t) => {
+                    const activo = !t.fecha_fin || new Date(t.fecha_fin) >= new Date();
+                    return (
+                      <div key={t.uuid} className="card">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-slate-900">{t.medicamento}</p>
+                              {activo && <span className="badge-green">Activo</span>}
+                              {t.ficha_clinica_info && (
+                                <Link href={`/fichas/${t.ficha_clinica_info.uuid}`} className="badge-blue hover:underline">
+                                  Ficha {new Date(t.ficha_clinica_info.fecha).toLocaleDateString()}
+                                </Link>
+                              )}
+                            </div>
+                            <p className="text-muted">{t.dosis} · {t.frecuencia}</p>
+                            <p className="text-muted">{t.fecha_inicio} → {t.fecha_fin ?? "indefinido"}</p>
                           </div>
-
-                          <p className="text-muted">
-                            {t.dosis} · {t.frecuencia}
-                          </p>
-                          <p className="text-muted">
-                            {t.fecha_inicio} → {t.fecha_fin ?? "indefinido"}
-                          </p>
+                          <div className="flex gap-2 shrink-0">
+                            <button onClick={() => iniciarEdicionTratamiento(t)} className="btn-secondary">Editar</button>
+                            <button onClick={() => { setTratamientoAEliminar(t.uuid); setConfirmTratamiento(true); }} className="btn-danger">Eliminar</button>
+                          </div>
                         </div>
+                        {tratamientoEditando === t.uuid && (
+                          <div className="mt-4 border-t border-slate-100 pt-4">
+                            <h4 className="text-sm font-semibold text-slate-700 mb-3">Editar tratamiento</h4>
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <input className="input" placeholder="Medicamento *" value={tratamientoEditForm.medicamento} onChange={(e) => setTratamientoEditForm({ ...tratamientoEditForm, medicamento: e.target.value })} />
+                              <input className="input" placeholder="Dosis *" value={tratamientoEditForm.dosis} onChange={(e) => setTratamientoEditForm({ ...tratamientoEditForm, dosis: e.target.value })} />
+                              <input className="input" placeholder="Frecuencia *" value={tratamientoEditForm.frecuencia} onChange={(e) => setTratamientoEditForm({ ...tratamientoEditForm, frecuencia: e.target.value })} />
+                              <input type="date" className="input" value={tratamientoEditForm.fecha_inicio} onChange={(e) => setTratamientoEditForm({ ...tratamientoEditForm, fecha_inicio: e.target.value })} />
+                              <input type="date" className="input" value={tratamientoEditForm.fecha_fin} onChange={(e) => setTratamientoEditForm({ ...tratamientoEditForm, fecha_fin: e.target.value })} />
+                            </div>
+                            <div className="flex gap-2 mt-3">
+                              <button onClick={() => editarTratamiento(t.uuid)} className="btn-primary">Guardar cambios</button>
+                              <button onClick={() => setTratamientoEditando(null)} className="btn-secondary">Cancelar</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+          {tab === "documentos" && (
+            <div className="space-y-4">
+              <MinimizableSection id="paciente-documento-form" title="➕ Subir documento" persistent>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <select
+                    className="input"
+                    value={documentoForm.tipo}
+                    onChange={(e) => setDocumentoForm({ ...documentoForm, tipo: e.target.value })}
+                  >
+                    <option value="">Tipo de documento *</option>
+                    {tiposArchivo.map((t) => (
+                      <option key={t.id} value={t.id}>{t.nombre}</option>
+                    ))}
+                  </select>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Fecha *</label>
+                    <input
+                      type="date"
+                      className="input"
+                      value={documentoForm.fecha}
+                      onChange={(e) => setDocumentoForm({ ...documentoForm, fecha: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <label className="mt-3 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-6 text-center hover:bg-white transition-colors">
+                  <div className="text-2xl mb-1">📎</div>
+                  <p className="text-sm font-medium text-slate-700">Arrastra o haz clic para seleccionar</p>
+                  <p className="text-xs text-slate-400 mt-1">PDF o imagen · máx 10MB</p>
+                  {documentoForm.archivo && (
+                    <span className="mt-2 rounded-lg bg-green-100 px-3 py-1 text-sm text-green-800 font-medium">
+                      ✓ {documentoForm.archivo.name}
+                    </span>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      setDocumentoForm({ ...documentoForm, archivo: f });
+                    }}
+                  />
+                </label>
+                <textarea
+                  className="input mt-3 w-full"
+                  placeholder="Observaciones"
+                  rows={2}
+                  value={documentoForm.observaciones}
+                  onChange={(e) => setDocumentoForm({ ...documentoForm, observaciones: e.target.value })}
+                />
+                <button onClick={guardarDocumento} disabled={subiendoDoc} className="btn-primary mt-4">
+                  {subiendoDoc ? "Subiendo..." : "Guardar documento"}
+                </button>
+              </MinimizableSection>
 
-                        <div className="flex gap-2 shrink-0">
-                          <button onClick={() => iniciarEdicionTratamiento(t)} className="btn-secondary">
-                            Editar
-                          </button>
-
+              {archivos.length === 0 ? (
+                <div className="card text-center py-8">
+                  <p className="text-muted">Sin documentos adjuntos.</p>
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {archivos.map((a) => {
+                    const url = a.archivo_url || "";
+                    const esImagen = /\.(jpg|jpeg|png|webp|gif)$/i.test(url);
+                    const esPdf = /\.pdf$/i.test(url);
+                    return (
+                      <div key={a.uuid} className="card">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <p className="font-semibold text-slate-900 capitalize">{a.tipo_nombre || "Documento"}</p>
+                            <p className="text-muted text-xs">{a.fecha}</p>
+                          </div>
                           <button
-                            onClick={() => {
-                              setTratamientoAEliminar(t.id);
-                              setConfirmTratamiento(true);
-                            }}
-                            className="btn-danger"
+                            onClick={() => { setDocAEliminar(a.uuid); setConfirmEliminarDoc(true); }}
+                            className="btn-danger text-xs"
                           >
                             Eliminar
                           </button>
                         </div>
+                        {esImagen && (
+                          <img src={url} alt={a.tipo_nombre} className="mb-2 max-h-40 w-full rounded-lg object-cover" />
+                        )}
+                        {esPdf && (
+                          <iframe src={url} className="mb-2 h-48 w-full rounded-lg border" title={a.tipo_nombre} />
+                        )}
+                        {a.observaciones && <p className="text-sm text-slate-600 mb-2">{a.observaciones}</p>}
+                        <a href={url} target="_blank" rel="noreferrer" className="btn-primary text-sm">
+                          {esPdf ? "Abrir PDF" : "Ver"}
+                        </a>
                       </div>
-
-                      {tratamientoEditando === t.id && (
-                        <div className="mt-4 border-t border-slate-100 pt-4">
-                          <h4 className="text-sm font-semibold text-slate-700 mb-3">
-                            Editar tratamiento
-                          </h4>
-
-                          <div className="grid gap-3 md:grid-cols-2">
-                            <input
-                              className="input"
-                              placeholder="Medicamento *"
-                              value={tratamientoEditForm.medicamento}
-                              onChange={(e) =>
-                                setTratamientoEditForm({
-                                  ...tratamientoEditForm,
-                                  medicamento: e.target.value,
-                                })
-                              }
-                            />
-
-                            <input
-                              className="input"
-                              placeholder="Dosis *"
-                              value={tratamientoEditForm.dosis}
-                              onChange={(e) =>
-                                setTratamientoEditForm({
-                                  ...tratamientoEditForm,
-                                  dosis: e.target.value,
-                                })
-                              }
-                            />
-
-                            <input
-                              className="input"
-                              placeholder="Frecuencia *"
-                              value={tratamientoEditForm.frecuencia}
-                              onChange={(e) =>
-                                setTratamientoEditForm({
-                                  ...tratamientoEditForm,
-                                  frecuencia: e.target.value,
-                                })
-                              }
-                            />
-
-                            <input
-                              type="date"
-                              className="input"
-                              value={tratamientoEditForm.fecha_inicio}
-                              onChange={(e) =>
-                                setTratamientoEditForm({
-                                  ...tratamientoEditForm,
-                                  fecha_inicio: e.target.value,
-                                })
-                              }
-                            />
-
-                            <input
-                              type="date"
-                              className="input"
-                              value={tratamientoEditForm.fecha_fin}
-                              onChange={(e) =>
-                                setTratamientoEditForm({
-                                  ...tratamientoEditForm,
-                                  fecha_fin: e.target.value,
-                                })
-                              }
-                            />
-                          </div>
-
-                          <div className="flex gap-2 mt-3">
-                            <button onClick={() => editarTratamiento(t.id)} className="btn-primary">
-                              Guardar cambios
-                            </button>
-
-                            <button
-                              onClick={() => setTratamientoEditando(null)}
-                              className="btn-secondary"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </div>
           )}
         </div>
       </div>
+
+      {/* Confirm eliminar documento */}
+      <ConfirmDialog
+        open={confirmEliminarDoc}
+        title="Eliminar documento"
+        message="¿Estás seguro? El archivo se eliminará permanentemente."
+        confirmLabel="Eliminar"
+        danger
+        requireKeyword="ELIMINAR"
+        onConfirm={eliminarDocumento}
+        onCancel={() => { setConfirmEliminarDoc(false); setDocAEliminar(null); }}
+      />
+
+      {/* Confirm eliminar vacuna */}
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Eliminar vacuna"
+        message="¿Estás seguro de que quieres eliminar esta vacuna?"
+        confirmLabel="Eliminar"
+        danger
+        requireKeyword="ELIMINAR"
+        onConfirm={eliminarVacuna}
+        onCancel={() => { setConfirmOpen(false); setVacunaAEliminar(null); }}
+      />
+
+      {/* Confirm eliminar tratamiento */}
+      <ConfirmDialog
+        open={confirmTratamiento}
+        title="Eliminar tratamiento"
+        message="¿Estás seguro de que quieres eliminar este tratamiento?"
+        confirmLabel="Eliminar"
+        danger
+        requireKeyword="ELIMINAR"
+        onConfirm={eliminarTratamiento}
+        onCancel={() => { setConfirmTratamiento(false); setTratamientoAEliminar(null); }}
+      />
+
+      {/* Confirm eliminar paciente */}
+      <ConfirmDialog
+        open={confirmPacienteOpen}
+        title="Eliminar paciente"
+        message="¿Estás seguro? Esta acción eliminará al paciente del sistema."
+        confirmLabel="Eliminar"
+        danger
+        requireKeyword="ELIMINAR"
+        onConfirm={eliminarPaciente}
+        onCancel={() => setConfirmPacienteOpen(false)}
+      />
     </main>
   );
 }

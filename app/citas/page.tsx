@@ -130,7 +130,7 @@ export default function CitasPage() {
         ) : (
           <section className="space-y-3">
             {citasFiltradas.map((cita) => (
-              <div key={cita.id} className="card">
+              <div key={cita.uuid} className="card">
                 <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
                   <div>
                     <div className="flex items-center gap-2 mb-1">

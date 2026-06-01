@@ -19,6 +19,7 @@ const DnDCalendar = withDragAndDrop<CalendarEvent>(Calendar);
 
 type Cita = {
   id: number;
+  uuid: string;
   paciente: number;
   tutor: number;
   paciente_nombre: string;
@@ -51,6 +52,7 @@ type Tratamiento = {
 };
 
 type Paciente = {
+  id: number;
   uuid: string;
   nombre: string;
   tutor: number;
@@ -83,7 +85,7 @@ export default function CalendarioCitasPage() {
   const [calendarDate, setCalendarDate] = useState(new Date());
   
   const [modalOpen, setModalOpen] = useState(false);
-  const [citaSeleccionadaId, setCitaSeleccionadaId] = useState<number | null>(null);
+  const [citaSeleccionadaId, setCitaSeleccionadaId] = useState<string | null>(null);
   
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busqueda, setBusqueda] = useState("");
@@ -189,7 +191,7 @@ export default function CalendarioCitasPage() {
     }
 
     const pacienteSeleccionado = pacientes.find(
-      (p) => p.uuid === form.paciente
+      (p) => String(p.id) === form.paciente
     );
 
     if (!pacienteSeleccionado) {
@@ -202,7 +204,7 @@ export default function CalendarioCitasPage() {
     const res = await apiFetch("/citas/", {
       method: "POST",
       body: JSON.stringify({
-        paciente: pacienteSeleccionado.uuid,
+        paciente: pacienteSeleccionado.id,
         tutor: pacienteSeleccionado.tutor,
         fecha_hora: fechaLocal,
         motivo: form.motivo,
@@ -229,7 +231,7 @@ export default function CalendarioCitasPage() {
       return;
     }
 
-    const pacienteSeleccionado = pacientes.find((p) => p.uuid === form.paciente);
+    const pacienteSeleccionado = pacientes.find((p) => String(p.id) === form.paciente);
     if (!pacienteSeleccionado) { toast.error("Paciente no válido"); return; }
 
     const fechaLocal = dayjs(form.fecha_hora).format("YYYY-MM-DDTHH:mm:ss");
@@ -237,7 +239,7 @@ export default function CalendarioCitasPage() {
     const res = await apiFetch(`/citas/${citaSeleccionadaId}/`, {
       method: "PATCH",
       body: JSON.stringify({
-        paciente: pacienteSeleccionado.uuid,
+        paciente: pacienteSeleccionado.id,
         tutor: pacienteSeleccionado.tutor,
         fecha_hora: fechaLocal,
         motivo: form.motivo,
@@ -287,8 +289,8 @@ export default function CalendarioCitasPage() {
     } else if (event.resourceType === "tratamiento") {
       backgroundColor = "#f59e0b"; // amber-500
     } else if (event.resourceType === "cita") {
-      backgroundColor = event.cita?.estado === "completado" ? "#64748b"
-        : event.cita?.estado === "cancelado" ? "#ef4444"
+      backgroundColor = event.cita?.estado === "completada" ? "#64748b"
+        : event.cita?.estado === "cancelada" ? "#ef4444"
         : "#3b82f6";
     }
 
@@ -510,7 +512,7 @@ export default function CalendarioCitasPage() {
             >
               <option value="">Seleccionar paciente</option>
               {pacientes.map((p) => (
-                <option key={p.uuid} value={p.uuid}>
+                <option key={p.uuid} value={String(p.id)}>
                   {p.nombre} · {p.tutor_nombre}
                 </option>
               ))}

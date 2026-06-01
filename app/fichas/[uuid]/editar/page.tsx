@@ -1,20 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import BackButton from "@/app/components/BackButton";
 
-type Paciente = {
-  id: number;
-  nombre: string;
-  tutor_nombre: string;
-  especie_nombre?: string;
-};
-
 type FichaForm = {
-  paciente: string;
   fecha: string;
   motivo_consulta: string;
   anamnesis: string;
@@ -29,7 +21,6 @@ type FichaForm = {
 };
 
 const formInicial: FichaForm = {
-  paciente: "",
   fecha: "",
   motivo_consulta: "",
   anamnesis: "",
@@ -48,81 +39,71 @@ export default function EditarFichaPage() {
   const router = useRouter();
   const fichaId = params.uuid as string;
 
-  const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [form, setForm] = useState<FichaForm>(formInicial);
+  const [pacienteNombre, setPacienteNombre] = useState("");
+  const [pacienteTutor, setPacienteTutor] = useState("");
+  const [pacienteEspecie, setPacienteEspecie] = useState("");
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
 
-  const pacienteSeleccionado = useMemo(
-    () => pacientes.find((p) => String(p.id) === form.paciente) ?? null,
-    [pacientes, form.paciente]
-  );
-
-  const cargarPacientes = async () => {
-    const res = await apiFetch("/pacientes/?page_size=200");
-    if (!res.ok) return;
-    const d = await res.json();
-    setPacientes(d.results ?? d);
-  };
-
-  const cargarFicha = async () => {
-    try {
-      setLoading(true);
-      const res = await apiFetch(`/fichas/${fichaId}/`);
-      if (!res.ok) { toast.error("No se pudo cargar la ficha"); return; }
-
-      const data = await res.json();
-      
-      // Convertir fecha UTC del backend a formato datetime-local
-      let fechaLocal = "";
-      if (data.fecha) {
-        const fechaUTC = new Date(data.fecha);
-        const offsetMs = fechaUTC.getTimezoneOffset() * 60000;
-        const fechaLocalDate = new Date(fechaUTC.getTime() - offsetMs);
-        fechaLocal = fechaLocalDate.toISOString().slice(0, 16);
-      }
-
-      setForm({
-        paciente: String(data.paciente?.id ?? data.paciente ?? ""),
-        fecha: fechaLocal,
-        motivo_consulta: data.motivo_consulta || "",
-        anamnesis: data.anamnesis || "",
-        peso_kg: data.peso_kg || "",
-        temperatura: data.temperatura || "",
-        frecuencia_cardiaca: data.frecuencia_cardiaca ? String(data.frecuencia_cardiaca) : "",
-        frecuencia_respiratoria: data.frecuencia_respiratoria ? String(data.frecuencia_respiratoria) : "",
-        diagnostico: data.diagnostico || "",
-        tratamiento: data.tratamiento || "",
-        indicaciones: data.indicaciones || "",
-        observaciones: data.observaciones || "",
-      });
-    } catch {
-      toast.error("Error cargando ficha");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    Promise.all([cargarPacientes(), cargarFicha()]);
+    const cargarFicha = async () => {
+      try {
+        setLoading(true);
+        const res = await apiFetch(`/fichas/${fichaId}/`);
+        if (!res.ok) { toast.error("No se pudo cargar la ficha"); return; }
+
+        const data = await res.json();
+
+        // Datos del paciente (solo lectura)
+        setPacienteNombre(data.paciente_nombre || data.paciente?.nombre || "");
+        setPacienteTutor(data.tutor_nombre || "");
+        setPacienteEspecie(data.especie_nombre || "");
+
+        // Convertir fecha UTC a datetime-local
+        let fechaLocal = "";
+        if (data.fecha) {
+          const fechaUTC = new Date(data.fecha);
+          const offsetMs = fechaUTC.getTimezoneOffset() * 60000;
+          fechaLocal = new Date(fechaUTC.getTime() - offsetMs).toISOString().slice(0, 16);
+        }
+
+        setForm({
+          fecha: fechaLocal,
+          motivo_consulta: data.motivo_consulta || "",
+          anamnesis: data.anamnesis || "",
+          peso_kg: data.peso_kg || "",
+          temperatura: data.temperatura || "",
+          frecuencia_cardiaca: data.frecuencia_cardiaca ? String(data.frecuencia_cardiaca) : "",
+          frecuencia_respiratoria: data.frecuencia_respiratoria ? String(data.frecuencia_respiratoria) : "",
+          diagnostico: data.diagnostico || "",
+          tratamiento: data.tratamiento || "",
+          indicaciones: data.indicaciones || "",
+          observaciones: data.observaciones || "",
+        });
+      } catch {
+        toast.error("Error cargando ficha");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarFicha();
   }, [fichaId]);
 
   const guardarCambios = async () => {
-    if (!form.paciente || !form.motivo_consulta) {
-      toast.warning("Selecciona un paciente e ingresa el motivo de consulta");
+    if (!form.motivo_consulta) {
+      toast.warning("El motivo de consulta es obligatorio");
       return;
     }
 
     try {
       setGuardando(true);
-      
-      // Convertir fecha local a ISO 8601 UTC para el backend
       const fechaISO = form.fecha ? new Date(form.fecha).toISOString() : null;
 
       const res = await apiFetch(`/fichas/${fichaId}/`, {
         method: "PATCH",
         body: JSON.stringify({
-          paciente: Number(form.paciente),
           fecha: fechaISO,
           motivo_consulta: form.motivo_consulta,
           anamnesis: form.anamnesis || null,
@@ -170,23 +151,16 @@ export default function EditarFichaPage() {
           <p className="text-muted">Actualiza la información médica registrada.</p>
         </div>
 
+        {/* Paciente — solo lectura, no se puede cambiar */}
         <section className="card">
-          <h2 className="subtitle mb-4">Paciente</h2>
-          <select className="input w-full" value={form.paciente}
-            onChange={(e) => setForm({ ...form, paciente: e.target.value })}>
-            <option value="">Seleccionar paciente *</option>
-            {pacientes.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nombre} · Tutor: {p.tutor_nombre}
-                {p.especie_nombre ? ` · ${p.especie_nombre}` : ""}
-              </option>
-            ))}
-          </select>
-          {pacienteSeleccionado && (
-            <p className="text-sm text-slate-500 mt-1">
-              {pacienteSeleccionado.especie_nombre} · Tutor: {pacienteSeleccionado.tutor_nombre}
+          <h2 className="subtitle mb-3">Paciente</h2>
+          <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-sm">
+            <p className="font-semibold text-slate-900">{pacienteNombre}</p>
+            <p className="text-muted">
+              {pacienteEspecie}{pacienteEspecie && pacienteTutor ? " · " : ""}
+              {pacienteTutor ? `Tutor: ${pacienteTutor}` : ""}
             </p>
-          )}
+          </div>
         </section>
 
         <section className="card">
@@ -196,64 +170,105 @@ export default function EditarFichaPage() {
             <div className="md:col-span-2">
               <label className="block text-xs text-slate-500 mb-1">Fecha y hora de consulta *</label>
               <input
-                className="input"
+                className="input w-full"
                 type="datetime-local"
                 value={form.fecha}
                 onChange={(e) => setForm({ ...form, fecha: e.target.value })}
               />
             </div>
 
-            <input className="input md:col-span-2" placeholder="Motivo de consulta *"
+            <input
+              className="input md:col-span-2"
+              placeholder="Motivo de consulta *"
               value={form.motivo_consulta}
-              onChange={(e) => setForm({ ...form, motivo_consulta: e.target.value })} />
+              onChange={(e) => setForm({ ...form, motivo_consulta: e.target.value })}
+            />
 
-            <textarea className="input md:col-span-2" placeholder="Anamnesis" rows={3}
+            <textarea
+              className="input md:col-span-2"
+              placeholder="Anamnesis"
+              rows={3}
               value={form.anamnesis}
-              onChange={(e) => setForm({ ...form, anamnesis: e.target.value })} />
+              onChange={(e) => setForm({ ...form, anamnesis: e.target.value })}
+            />
 
             <div>
               <label className="block text-xs text-slate-500 mb-1">Peso (kg)</label>
-              <input className="input" type="number" step="0.01" placeholder="Ej: 4.5"
+              <input
+                className="input"
+                type="number"
+                step="0.01"
+                placeholder="Ej: 4.5"
                 value={form.peso_kg}
-                onChange={(e) => setForm({ ...form, peso_kg: e.target.value })} />
+                onChange={(e) => setForm({ ...form, peso_kg: e.target.value })}
+              />
             </div>
 
             <div>
               <label className="block text-xs text-slate-500 mb-1">Temperatura (°C)</label>
-              <input className="input" type="number" step="0.1" placeholder="Ej: 38.5"
+              <input
+                className="input"
+                type="number"
+                step="0.1"
+                placeholder="Ej: 38.5"
                 value={form.temperatura}
-                onChange={(e) => setForm({ ...form, temperatura: e.target.value })} />
+                onChange={(e) => setForm({ ...form, temperatura: e.target.value })}
+              />
             </div>
 
             <div>
-              <label className="block text-xs text-slate-500 mb-1">Frecuencia cardíaca</label>
-              <input className="input" type="number" placeholder="lpm"
+              <label className="block text-xs text-slate-500 mb-1">Frecuencia cardíaca (lpm)</label>
+              <input
+                className="input"
+                type="number"
+                placeholder="Ej: 80"
                 value={form.frecuencia_cardiaca}
-                onChange={(e) => setForm({ ...form, frecuencia_cardiaca: e.target.value })} />
+                onChange={(e) => setForm({ ...form, frecuencia_cardiaca: e.target.value })}
+              />
             </div>
 
             <div>
-              <label className="block text-xs text-slate-500 mb-1">Frecuencia respiratoria</label>
-              <input className="input" type="number" placeholder="rpm"
+              <label className="block text-xs text-slate-500 mb-1">Frecuencia respiratoria (rpm)</label>
+              <input
+                className="input"
+                type="number"
+                placeholder="Ej: 20"
                 value={form.frecuencia_respiratoria}
-                onChange={(e) => setForm({ ...form, frecuencia_respiratoria: e.target.value })} />
+                onChange={(e) => setForm({ ...form, frecuencia_respiratoria: e.target.value })}
+              />
             </div>
 
-            <textarea className="input md:col-span-2" placeholder="Diagnóstico" rows={3}
+            <textarea
+              className="input md:col-span-2"
+              placeholder="Diagnóstico"
+              rows={3}
               value={form.diagnostico}
-              onChange={(e) => setForm({ ...form, diagnostico: e.target.value })} />
+              onChange={(e) => setForm({ ...form, diagnostico: e.target.value })}
+            />
 
-            <textarea className="input md:col-span-2" placeholder="Tratamiento" rows={3}
+            <textarea
+              className="input md:col-span-2"
+              placeholder="Tratamiento"
+              rows={3}
               value={form.tratamiento}
-              onChange={(e) => setForm({ ...form, tratamiento: e.target.value })} />
+              onChange={(e) => setForm({ ...form, tratamiento: e.target.value })}
+            />
 
-            <textarea className="input md:col-span-2" placeholder="Indicaciones" rows={2}
+            <textarea
+              className="input md:col-span-2"
+              placeholder="Indicaciones para el tutor"
+              rows={2}
               value={form.indicaciones}
-              onChange={(e) => setForm({ ...form, indicaciones: e.target.value })} />
+              onChange={(e) => setForm({ ...form, indicaciones: e.target.value })}
+            />
 
-            <textarea className="input md:col-span-2" placeholder="Observaciones" rows={2}
+            <textarea
+              className="input md:col-span-2"
+              placeholder="Observaciones"
+              rows={2}
               value={form.observaciones}
-              onChange={(e) => setForm({ ...form, observaciones: e.target.value })} />
+              onChange={(e) => setForm({ ...form, observaciones: e.target.value })}
+            />
           </div>
 
           <div className="mt-5 flex gap-2">

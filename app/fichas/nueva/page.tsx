@@ -88,6 +88,7 @@ export default function NuevaFichaPage() {
 
   // Modal states
   const [fichaId, setFichaId] = useState<number | null>(null);
+  const [fichaUuid, setFichaUuid] = useState<string | null>(null);
   const [fichaCreada, setFichaCreada] = useState(false);
   const [vacunaModalOpen, setVacunaModalOpen] = useState(false);
   const [tratamientoModalOpen, setTratamientoModalOpen] = useState(false);
@@ -141,6 +142,7 @@ export default function NuevaFichaPage() {
 
       const data = await res.json();
       setFichaId(data.id);
+      setFichaUuid(data.uuid);
       setFichaCreada(true);
 
       if (citaParam) {
@@ -160,8 +162,8 @@ export default function NuevaFichaPage() {
   };
 
   const irAFicha = () => {
-    if (fichaId) {
-      router.push(`/fichas/${fichaId}`);
+    if (fichaUuid) {
+      router.push(`/fichas/${fichaUuid}`);
     }
   };
 

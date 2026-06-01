@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import {
+  useEffect, useMemo, useState, useCallback
+} from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { apiFetch, type PaginatedResponse } from "@/lib/api";
@@ -13,23 +15,43 @@ import ConfirmDialog from "@/app/components/ConfirmDialog";
 import Pagination from "@/app/components/Pagination";
 import MinimizableSection from "@/app/components/MinimizableSection";
 import BackButton from "@/app/components/BackButton";
-import { formatEdad } from "@/lib/utils";
+import { formatEdad, formatFecha } from "@/lib/utils";
 import PacienteForm, {
   type PacienteFormValues,
 } from "@/app/components/PacienteForm";
 
+/** Muestra la fecha de la última ficha clínica del paciente de forma lazy */
+function UltimaVisita({ pacienteUuid }: { pacienteUuid: string }) {
+  const [fecha, setFecha] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    apiFetch(`/fichas/?paciente=${pacienteUuid}&page_size=1`)
+      .then(async (res) => {
+        if (!res.ok) { setFecha(null); return; }
+        const d = await res.json();
+        const fichas = d.results ?? d;
+        setFecha(fichas.length > 0 ? fichas[0].fecha : null);
+      })
+      .catch(() => setFecha(null));
+  }, [pacienteUuid]);
+
+  if (fecha === undefined) return <span className="text-slate-300">···</span>;
+  if (fecha === null) return <span className="text-slate-400">Sin visitas</span>;
+  return <span className="text-slate-600">{formatFecha(fecha)}</span>;
+}
+
 function formToPayload(form: PacienteFormValues) {
   return {
     nombre: form.nombre,
-    especie: Number(form.especie),
+    especie: Number(form.especie) || undefined,
     raza: form.raza || null,
-    sexo: Number(form.sexo),
+    sexo: Number(form.sexo) || undefined,
     fecha_nacimiento: form.fecha_nacimiento || null,
     color: form.color || null,
     esterilizado: form.esterilizado,
     chip: form.chip || null,
     observaciones: form.observaciones || null,
-    tutor: Number(form.tutor),
+    tutor: Number(form.tutor) || undefined,
     activo: form.activo,
   };
 }
@@ -125,7 +147,15 @@ export default function PacientesPage() {
       });
 
       if (!res.ok) {
-        toast.error("No se pudo crear el paciente");
+        try {
+          const err = await res.json();
+          const msg = Object.entries(err)
+            .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`)
+            .join(" | ");
+          toast.error(`Error al crear paciente: ${msg}`);
+        } catch {
+          toast.error("No se pudo crear el paciente");
+        }
         return;
       }
 
@@ -336,7 +366,10 @@ export default function PacientesPage() {
                       {p.observaciones && (
                         <p className="mt-2 text-sm text-slate-700">{p.observaciones}</p>
                       )}
-                    </div>
+
+                      <p className="mt-1 text-xs text-slate-400">
+                        Última visita: <UltimaVisita pacienteUuid={p.uuid} />
+                      </p>                    </div>
 
                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:flex-nowrap">
                       <Link href={`/pacientes/${p.uuid}`} className="btn-primary text-center text-sm">

@@ -15,11 +15,6 @@ const ACCESOS = [
   { href: "/configuracion", icon: "⚙️", label: "Configuración",   desc: "Especies, sexos y tipos de documento" },
 ] as const;
 
-/**
- * Formatea la fecha actual en español.
- * Función (no constante de módulo) para que siempre devuelva la fecha
- * correcta, incluso si la app lleva abierta varios días.
- */
 function formatearHoy(): string {
   return new Date().toLocaleDateString("es-CL", {
     weekday: "long",
@@ -59,8 +54,9 @@ function StatCard({
 
 export default async function DashboardPage() {
   let resumen: Resumen | null = null;
+  let citasHoy: Cita[] = [];
   let citasPendientes: Cita[] = [];
-  
+
   // Datos para gráficos
   let dataCitasGrafico: { fecha: string; citas: number }[] = [];
   let dataEspeciesGrafico: { name: string; value: number }[] = [];
@@ -79,49 +75,59 @@ export default async function DashboardPage() {
 
     if (resCitas.ok) {
       const data: PaginatedResponse<Cita> = await resCitas.json();
-      
-      // Extraer próximas 5 citas pendientes
+
+      // Citas de hoy (pendientes)
+      const hoyStr = new Date().toDateString();
+      citasHoy = data.results
+        .filter((c) => {
+          const fechaCita = new Date(c.fecha_hora);
+          return c.estado === "pendiente" && fechaCita.toDateString() === hoyStr;
+        })
+        .sort((a, b) => new Date(a.fecha_hora).getTime() - new Date(b.fecha_hora).getTime());
+
+      // Próximas 5 citas pendientes (excluyendo las de hoy)
       citasPendientes = data.results
-        .filter((c) => c.estado === "pendiente")
+        .filter((c) => {
+          const fechaCita = new Date(c.fecha_hora);
+          return c.estado === "pendiente" && fechaCita.toDateString() !== hoyStr && fechaCita > new Date();
+        })
         .sort((a, b) => new Date(a.fecha_hora).getTime() - new Date(b.fecha_hora).getTime())
         .slice(0, 5);
-        
-      // Extraer datos para el gráfico de citas (últimos 30 días)
+
+      // Datos para gráfico de citas (últimos 30 días)
       const hace30Dias = new Date();
       hace30Dias.setDate(hace30Dias.getDate() - 30);
-      
+
       const conteoCitas: Record<string, number> = {};
       data.results.forEach((c) => {
         const fecha = new Date(c.fecha_hora);
         if (fecha >= hace30Dias) {
-          // Formato "DD/MM"
-          const key = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}`;
+          const key = `${fecha.getDate().toString().padStart(2, "0")}/${(fecha.getMonth() + 1).toString().padStart(2, "0")}`;
           conteoCitas[key] = (conteoCitas[key] || 0) + 1;
         }
       });
-      
-      // Convertir a array y ordenar cronológicamente
+
       dataCitasGrafico = Object.entries(conteoCitas)
         .map(([fecha, citas]) => ({ fecha, citas }))
         .sort((a, b) => {
           const [dayA, monthA] = a.fecha.split("/");
           const [dayB, monthB] = b.fecha.split("/");
-          return new Date(2025, parseInt(monthA)-1, parseInt(dayA)).getTime() - new Date(2025, parseInt(monthB)-1, parseInt(dayB)).getTime();
+          return new Date(2025, parseInt(monthA) - 1, parseInt(dayA)).getTime() - new Date(2025, parseInt(monthB) - 1, parseInt(dayB)).getTime();
         });
     }
 
     if (resPacientes.ok) {
       const data: PaginatedResponse<Paciente> = await resPacientes.json();
       const conteoEspecies: Record<string, number> = {};
-      
+
       data.results.forEach((p) => {
         const esp = p.especie_nombre || "Desconocido";
         conteoEspecies[esp] = (conteoEspecies[esp] || 0) + 1;
       });
-      
+
       dataEspeciesGrafico = Object.entries(conteoEspecies)
         .map(([name, value]) => ({ name, value }))
-        .sort((a, b) => b.value - a.value); // Mayor a menor
+        .sort((a, b) => b.value - a.value);
     }
   } catch (err) {
     console.error("Error cargando dashboard SSR:", err);
@@ -150,32 +156,42 @@ export default async function DashboardPage() {
           </div>
         </section>
 
-        {/* Módulo de Analíticas */}
-        <section>
-          <DashboardCharts dataCitas={dataCitasGrafico} dataEspecies={dataEspeciesGrafico} />
-        </section>
-
-        {/* Próximas citas */}
+        {/* Citas de hoy */}
         <section>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-            <h2 className="subtitle">Próximas citas pendientes</h2>
-            <Link href="/citas" className="btn-secondary text-sm">Ver todas</Link>
+            <h2 className="subtitle">
+              Citas de hoy
+              {citasHoy.length > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-600 text-white text-xs font-bold">
+                  {citasHoy.length}
+                </span>
+              )}
+            </h2>
+            <Link href="/citas/calendario" className="btn-secondary text-sm">Ver calendario</Link>
           </div>
 
-          {citasPendientes.length === 0 ? (
-            <div className="card text-center py-8">
-              <p className="text-muted">No hay citas pendientes.</p>
-              <Link href="/citas/nueva" className="btn-primary mt-4 inline-flex">Agendar cita</Link>
+          {citasHoy.length === 0 ? (
+            <div className="card text-center py-6">
+              <p className="text-muted">No hay citas pendientes para hoy.</p>
+              <Link href="/citas/nueva" className="btn-primary mt-3 inline-flex">Agendar cita</Link>
             </div>
           ) : (
             <div className="space-y-2">
-              {citasPendientes.map((cita) => (
-                <div key={cita.id} className="card flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between py-3 md:py-4">
+              {citasHoy.map((cita) => (
+                <div key={cita.uuid} className="card border-l-4 border-green-500 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between py-3 md:py-4">
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-900 truncate">{cita.paciente_nombre}</p>
-                    <p className="text-muted text-sm">{formatFechaHora(cita.fecha_hora)} · {cita.motivo}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                        {new Date(cita.fecha_hora).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      <p className="font-semibold text-slate-900 truncate">{cita.paciente_nombre}</p>
+                    </div>
+                    <p className="text-muted text-sm mt-0.5">{cita.motivo} · Tutor: {cita.tutor_nombre}</p>
                   </div>
-                  <Link href={`/fichas/nueva?paciente=${cita.paciente}&cita=${cita.uuid}`} className="btn-primary shrink-0 text-sm w-full sm:w-auto text-center">
+                  <Link
+                    href={`/fichas/nueva?paciente=${cita.paciente_uuid}&cita=${cita.uuid}`}
+                    className="btn-primary shrink-0 text-sm w-full sm:w-auto text-center"
+                  >
                     Atender
                   </Link>
                 </div>
@@ -183,6 +199,35 @@ export default async function DashboardPage() {
             </div>
           )}
         </section>
+
+        {/* Módulo de Analíticas */}
+        <section>
+          <DashboardCharts dataCitas={dataCitasGrafico} dataEspecies={dataEspeciesGrafico} />
+        </section>
+
+        {/* Próximas citas */}
+        {citasPendientes.length > 0 && (
+          <section>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+              <h2 className="subtitle">Próximas citas</h2>
+              <Link href="/citas" className="btn-secondary text-sm">Ver todas</Link>
+            </div>
+
+            <div className="space-y-2">
+              {citasPendientes.map((cita) => (
+                <div key={cita.uuid} className="card flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between py-3 md:py-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-900 truncate">{cita.paciente_nombre}</p>
+                    <p className="text-muted text-sm">{formatFechaHora(cita.fecha_hora)} · {cita.motivo}</p>
+                  </div>
+                  <Link href={`/fichas/nueva?paciente=${cita.paciente_uuid}&cita=${cita.uuid}`} className="btn-primary shrink-0 text-sm w-full sm:w-auto text-center">
+                    Atender
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Accesos rápidos */}
         <section>

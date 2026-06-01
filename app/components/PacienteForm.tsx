@@ -3,9 +3,6 @@
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import SearchableSelect, {
-  type SearchableOption,
-} from "@/app/components/SearchableSelect";
 import type { Opcion } from "@/lib/types";
 
 export const pacienteSchema = z.object({
@@ -22,8 +19,7 @@ export const pacienteSchema = z.object({
   activo: z.boolean(),
 });
 
-export type PacienteFormValues =
-  z.infer<typeof pacienteSchema>;
+export type PacienteFormValues = z.infer<typeof pacienteSchema>;
 
 export default function PacienteForm({
   defaultValues,
@@ -35,30 +31,19 @@ export default function PacienteForm({
   submitLabel = "Guardar",
 }: {
   defaultValues?: Partial<PacienteFormValues>;
-  onSubmit: (
-    data: PacienteFormValues
-  ) => Promise<void>;
-
+  onSubmit: (data: PacienteFormValues) => Promise<void>;
   tutores: Opcion[];
   especies: Opcion[];
   sexos: Opcion[];
-
   onCancel?: () => void;
   submitLabel?: string;
 }) {
   const {
     register,
     handleSubmit,
-    watch,
-    setValue,
-    formState: {
-      errors,
-      isSubmitting,
-    },
+    formState: { errors, isSubmitting },
   } = useForm<PacienteFormValues>({
-    resolver:
-      zodResolver(pacienteSchema),
-
+    resolver: zodResolver(pacienteSchema),
     defaultValues: {
       nombre: "",
       especie: "",
@@ -71,200 +56,125 @@ export default function PacienteForm({
       observaciones: "",
       tutor: "",
       activo: true,
-
       ...defaultValues,
     },
   });
 
-  const especieValue =
-    watch("especie");
-
-  const sexoValue =
-    watch("sexo");
-
-  const tutorValue =
-    watch("tutor");
-
-  const activoValue =
-    watch("activo");
-
-  const esterilizadoValue =
-    watch("esterilizado");
-
-  const especiesOptions:
-    SearchableOption[] =
-    especies.map((e) => ({
-      id: e.id,
-      nombre: e.nombre,
-    }));
-
-  const sexosOptions =
-    sexos.map((s) => ({
-      id: s.id,
-      nombre: s.nombre,
-    }));
-
-  const tutoresOptions =
-    tutores.map((t) => ({
-      id: t.id,
-      nombre: t.nombre,
-    }));
-
   return (
-    <form
-      onSubmit={
-        handleSubmit(onSubmit)
-      }
-    >
+    <form onSubmit={handleSubmit(onSubmit)}>
       <div className="grid gap-3 md:grid-cols-2">
 
-        <input
-          className="input"
-          placeholder="Nombre *"
-          {...register("nombre")}
-        />
+        {/* Nombre */}
+        <div className="flex flex-col gap-1">
+          <input
+            className="input"
+            placeholder="Nombre *"
+            {...register("nombre")}
+          />
+          {errors.nombre && (
+            <span className="text-xs text-red-500">{errors.nombre.message}</span>
+          )}
+        </div>
 
-        <SearchableSelect
-          label="Especie *"
-          options={
-            especiesOptions
-          }
-          value={especieValue}
-          onChange={(v) =>
-            setValue(
-              "especie",
-              v
-            )
-          }
-          placeholder="Buscar especie..."
-        />
+        {/* Especie */}
+        <div className="flex flex-col gap-1">
+          <select className="input" {...register("especie")}>
+            <option value="">Seleccionar especie *</option>
+            {especies.map((e, i) => (
+              <option key={`especie-${e.id ?? i}`} value={String(e.id)}>
+                {e.nombre}
+              </option>
+            ))}
+          </select>
+          {errors.especie && (
+            <span className="text-xs text-red-500">{errors.especie.message}</span>
+          )}
+        </div>
 
+        {/* Raza */}
         <input
           className="input"
           placeholder="Raza"
           {...register("raza")}
         />
 
-        <SearchableSelect
-          label="Sexo *"
-          options={
-            sexosOptions
-          }
-          value={sexoValue}
-          onChange={(v) =>
-            setValue(
-              "sexo",
-              v
-            )
-          }
-          placeholder="Buscar sexo..."
-        />
+        {/* Sexo */}
+        <div className="flex flex-col gap-1">
+          <select className="input" {...register("sexo")}>
+            <option value="">Seleccionar sexo *</option>
+            {sexos.map((s, i) => (
+              <option key={`sexo-${s.id ?? i}`} value={String(s.id)}>
+                {s.nombre}
+              </option>
+            ))}
+          </select>
+          {errors.sexo && (
+            <span className="text-xs text-red-500">{errors.sexo.message}</span>
+          )}
+        </div>
 
+        {/* Fecha nacimiento */}
         <input
           className="input"
           type="date"
-          {...register(
-            "fecha_nacimiento"
-          )}
+          {...register("fecha_nacimiento")}
         />
 
+        {/* Color */}
         <input
           className="input"
           placeholder="Color"
           {...register("color")}
         />
 
-        <SearchableSelect
-          label="Tutor *"
-          options={
-            tutoresOptions
-          }
-          value={tutorValue}
-          onChange={(v) =>
-            setValue(
-              "tutor",
-              v
-            )
-          }
-          placeholder="Buscar tutor..."
-        />
+        {/* Tutor */}
+        <div className="flex flex-col gap-1">
+          <select className="input" {...register("tutor")}>
+            <option value="">Seleccionar tutor *</option>
+            {tutores.map((t, i) => (
+              <option key={`tutor-${t.id ?? i}`} value={String(t.id)}>
+                {t.nombre}
+              </option>
+            ))}
+          </select>
+          {errors.tutor && (
+            <span className="text-xs text-red-500">{errors.tutor.message}</span>
+          )}
+        </div>
 
+        {/* Chip */}
         <input
           className="input"
           placeholder="Chip"
           {...register("chip")}
         />
 
-        <label>
-          <input
-            type="checkbox"
-            checked={
-              esterilizadoValue
-            }
-            {...register(
-              "esterilizado"
-            )}
-          />
+        {/* Checkboxes */}
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" {...register("esterilizado")} />
           Esterilizado
         </label>
 
-        <label>
-          <input
-            type="checkbox"
-            checked={
-              activoValue
-            }
-            {...register(
-              "activo"
-            )}
-          />
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" {...register("activo")} />
           Activo
         </label>
 
+        {/* Observaciones */}
         <textarea
-          className="
-            input
-            md:col-span-2
-          "
-          placeholder="
-            Observaciones
-          "
-          {...register(
-            "observaciones"
-          )}
+          className="input md:col-span-2"
+          placeholder="Observaciones"
+          rows={3}
+          {...register("observaciones")}
         />
       </div>
 
-      <div className="
-        mt-4
-        flex
-        gap-2
-      ">
-        <button
-          className="
-            btn-primary
-          "
-          disabled={
-            isSubmitting
-          }
-        >
-          {
-            isSubmitting
-              ? "Guardando..."
-              : submitLabel
-          }
+      <div className="mt-4 flex gap-2">
+        <button className="btn-primary" disabled={isSubmitting}>
+          {isSubmitting ? "Guardando..." : submitLabel}
         </button>
-
         {onCancel && (
-          <button
-            type="button"
-            onClick={
-              onCancel
-            }
-            className="
-              btn-secondary
-            "
-          >
+          <button type="button" onClick={onCancel} className="btn-secondary">
             Cancelar
           </button>
         )}

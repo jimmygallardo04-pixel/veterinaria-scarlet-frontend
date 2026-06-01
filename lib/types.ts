@@ -52,6 +52,8 @@ export type Paciente = {
   chip?: string | null;
   observaciones?: string | null;
   activo: boolean;
+  /** Fecha de la última ficha clínica — calculada en el frontend si está disponible */
+  ultima_ficha_fecha?: string | null;
 };
 
 /** Versión reducida de Paciente usada en sugerencias del buscador global. */

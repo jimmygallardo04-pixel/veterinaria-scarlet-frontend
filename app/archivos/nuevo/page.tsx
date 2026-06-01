@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/api";
 import BackButton from "@/app/components/BackButton";
 
-type Paciente = { uuid: string; nombre: string; tutor_nombre: string };
+type Paciente = { id: number; uuid: string; nombre: string; tutor_nombre: string };
 type TipoArchivo = { id: number; nombre: string };
 
 const BUCKET_NAME = "documentos-veterinaria-scarlet";
@@ -123,7 +123,7 @@ export default function NuevoArchivoPage() {
       const res = await apiFetch("/archivos/", {
         method: "POST",
         body: JSON.stringify({
-          paciente: form.paciente,
+          paciente: pacienteSeleccionado?.id,
           tipo: Number(form.tipo),
           archivo_url: data.publicUrl,
           storage_path: fileName,
@@ -138,7 +138,14 @@ export default function NuevoArchivoPage() {
       }
 
       toast.success("Documento guardado");
-      router.push(fichaParam ? `/fichas/${fichaParam}` : "/fichas");
+
+      if (fichaParam) {
+        router.push(`/fichas/${fichaParam}`);
+      } else if (pacienteParam) {
+        router.push(`/pacientes/${pacienteParam}`);
+      } else {
+        router.push("/pacientes");
+      }
     } catch {
       toast.error("Error general");
     } finally {
@@ -147,7 +154,11 @@ export default function NuevoArchivoPage() {
   };
 
   const pacienteSeleccionado = pacientes.find((p) => p.uuid === form.paciente);
-  const backHref = fichaParam ? `/fichas/${fichaParam}` : "/fichas";
+  const backHref = fichaParam
+    ? `/fichas/${fichaParam}`
+    : pacienteParam
+    ? `/pacientes/${pacienteParam}`
+    : "/pacientes";
 
   return (
     <main className="min-h-screen bg-slate-100 p-8">

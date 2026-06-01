@@ -1,4 +1,32 @@
 /**
+ * Devuelve cuántos días faltan (positivo) o han pasado (negativo) desde hoy
+ * hasta una fecha dada. Útil para mostrar "en 5 días" o "hace 3 días".
+ */
+export function diasDesdeHoy(fecha: string | null | undefined): number | null {
+  if (!fecha) return null;
+  const [year, month, day] = fecha.split("T")[0].split("-").map(Number);
+  const objetivo = new Date(year, month - 1, day);
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const diff = objetivo.getTime() - hoy.getTime();
+  return Math.round(diff / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Formatea la diferencia de días en texto legible.
+ * Ej: "hoy", "mañana", "en 5 días", "hace 3 días"
+ */
+export function formatDiasRestantes(fecha: string | null | undefined): string {
+  const dias = diasDesdeHoy(fecha);
+  if (dias === null) return "-";
+  if (dias === 0) return "hoy";
+  if (dias === 1) return "mañana";
+  if (dias === -1) return "ayer";
+  if (dias > 0) return `en ${dias} días`;
+  return `hace ${Math.abs(dias)} días`;
+}
+
+/**
  * Pads a number to the given minimum number of digits with leading zeros.
  */
 function pad(n: number, size: number): string {
