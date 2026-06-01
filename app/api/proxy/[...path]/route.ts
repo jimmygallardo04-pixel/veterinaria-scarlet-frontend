@@ -117,12 +117,20 @@ export async function ALL(
   }
 
   // Si no se renovó o fue exitoso a la primera
-  const responseBody = await res.arrayBuffer();
-  
   // Remover el Content-Encoding para que Next.js no comprima algo doblemente y rompa la decodificación
   const responseHeaders = new Headers(res.headers);
   responseHeaders.delete("Content-Encoding");
   responseHeaders.delete("Content-Length");
+
+  // 204 No Content no puede tener body — NextResponse lo rechaza con status 204
+  if (res.status === 204) {
+    return new NextResponse(null, {
+      status: 204,
+      headers: responseHeaders,
+    });
+  }
+
+  const responseBody = await res.arrayBuffer();
 
   return new NextResponse(responseBody, {
     status: res.status,

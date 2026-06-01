@@ -45,7 +45,10 @@ export default function NuevaCitaPage() {
       return;
     }
 
-    const pacienteSeleccionado = pacientes.find((p) => String(p.id) === form.paciente);
+    // form.paciente puede ser un uuid (desde URL) o un id numérico (desde el select)
+    const pacienteSeleccionado = pacientes.find(
+      (p) => String(p.id) === form.paciente || p.uuid === form.paciente
+    );
     if (!pacienteSeleccionado) { toast.error("Paciente no válido"); return; }
 
     try {
@@ -74,7 +77,7 @@ export default function NuevaCitaPage() {
     }
   };
 
-  // Convertir pacientes a formato SearchableOption
+  // Convertir pacientes a formato SearchableOption — usar id numérico como identificador
   const pacientesOptions: SearchableOption[] = useMemo(() => 
     pacientes.map((p) => ({
       id: p.id,
@@ -84,7 +87,19 @@ export default function NuevaCitaPage() {
     [pacientes]
   );
 
-  const pacienteSeleccionado = pacientes.find((p) => String(p.id) === form.paciente);
+  // Normalizar form.paciente: si viene como UUID desde la URL, convertir al id numérico
+  const pacienteIdNormalizado = useMemo(() => {
+    if (!form.paciente) return "";
+    // Si ya es numérico, usarlo directo
+    if (/^\d+$/.test(form.paciente)) return form.paciente;
+    // Si es UUID, buscar el paciente y devolver su id
+    const p = pacientes.find((p) => p.uuid === form.paciente);
+    return p ? String(p.id) : form.paciente;
+  }, [form.paciente, pacientes]);
+
+  const pacienteSeleccionado = pacientes.find(
+    (p) => String(p.id) === pacienteIdNormalizado || p.uuid === form.paciente
+  );
 
   const backHref = "/citas";
 
@@ -104,11 +119,11 @@ export default function NuevaCitaPage() {
           <div>
           <SearchableSelect
             options={pacientesOptions}
-            value={form.paciente}
+            value={pacienteIdNormalizado}
             onChange={(value) => {
               setForm({ ...form, paciente: value });
 
-              // Actualizar la URL con el nuevo paciente seleccionado
+              // Actualizar la URL con el uuid del paciente seleccionado
               const newUrl = new URL(window.location.href);
               if (value) {
                 const paciente = pacientes.find((p) => String(p.id) === value);

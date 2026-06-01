@@ -35,9 +35,9 @@ export default function CitaModal({
       apiFetch(`/pacientes/${pacienteId}/`).then(async (res) => {
         if (res.ok) {
           const data = await res.json();
-          // El tutor_id viene en la respuesta del paciente
-          if (data.tutor_id) {
-            setPacienteTutorId(data.tutor_id);
+          // La API devuelve el FK del tutor en el campo "tutor" (ID numérico)
+          if (data.tutor) {
+            setPacienteTutorId(data.tutor);
           }
         }
       });

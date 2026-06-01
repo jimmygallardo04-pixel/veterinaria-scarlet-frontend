@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import BackButton from "@/app/components/BackButton";
 import PageSkeleton from "@/app/components/PageSkeleton";
+import { formatDiasRestantes } from "@/lib/utils";
 
 type Resumen = {
   vacunas_vencidas: number;
@@ -63,6 +64,7 @@ function AccionesPaciente({ pacienteUuid }: { pacienteUuid: string }) {
     </div>
   );
 }
+
 
 export default function AlertasPage() {
   const [data, setData] = useState<AlertasResponse | null>(null);
@@ -143,10 +145,21 @@ export default function AlertasPage() {
                 <div className="space-y-3">
                   {data.vacunas_vencidas.map((v) => (
                     <div key={v.id} className="rounded-xl border border-red-200 bg-red-50 p-4">
-                      <p className="font-semibold text-red-800">{v.nombre_vacuna}</p>
-                      <p className="text-sm text-red-700">Paciente: {v.paciente_nombre}</p>
-                      <p className="text-sm text-red-700">Próxima dosis: {v.proxima_dosis || "-"}</p>
-                      {v.observaciones && <p className="text-sm text-red-600 mt-1">{v.observaciones}</p>}
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-red-800">{v.nombre_vacuna}</p>
+                          <p className="text-sm text-red-700">Paciente: {v.paciente_nombre}</p>
+                          <p className="text-sm text-red-700">
+                            Próxima dosis: {v.proxima_dosis || "-"}
+                            {v.proxima_dosis && (
+                              <span className="ml-2 font-semibold">
+                                ({formatDiasRestantes(v.proxima_dosis)})
+                              </span>
+                            )}
+                          </p>
+                          {v.observaciones && <p className="text-sm text-red-600 mt-1">{v.observaciones}</p>}
+                        </div>
+                      </div>
                       <AccionesPaciente pacienteUuid={v.paciente_uuid} />
                     </div>
                   ))}
@@ -168,10 +181,21 @@ export default function AlertasPage() {
                 <div className="space-y-3">
                   {data.vacunas_proximas.map((v) => (
                     <div key={v.id} className="rounded-xl border border-yellow-200 bg-yellow-50 p-4">
-                      <p className="font-semibold text-yellow-800">{v.nombre_vacuna}</p>
-                      <p className="text-sm text-yellow-700">Paciente: {v.paciente_nombre}</p>
-                      <p className="text-sm text-yellow-700">Próxima dosis: {v.proxima_dosis || "-"}</p>
-                      {v.observaciones && <p className="text-sm text-yellow-600 mt-1">{v.observaciones}</p>}
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-yellow-800">{v.nombre_vacuna}</p>
+                          <p className="text-sm text-yellow-700">Paciente: {v.paciente_nombre}</p>
+                          <p className="text-sm text-yellow-700">
+                            Próxima dosis: {v.proxima_dosis || "-"}
+                            {v.proxima_dosis && (
+                              <span className="ml-2 font-semibold">
+                                ({formatDiasRestantes(v.proxima_dosis)})
+                              </span>
+                            )}
+                          </p>
+                          {v.observaciones && <p className="text-sm text-yellow-600 mt-1">{v.observaciones}</p>}
+                        </div>
+                      </div>
                       <AccionesPaciente pacienteUuid={v.paciente_uuid} />
                     </div>
                   ))}

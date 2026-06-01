@@ -10,6 +10,7 @@ type Paciente = {
   color?: string | null;
   chip?: string | null;
   esterilizado?: boolean;
+  tutor_uuid?: string;
 };
 
 type Vacuna = {
@@ -42,6 +43,7 @@ type Archivo = {
 
 type FichaHistorial = {
   id: number;
+  uuid?: string;
   fecha: string;
   motivo_consulta: string;
   diagnostico?: string | null;
@@ -50,11 +52,14 @@ type FichaHistorial = {
 
 export type FichaDetalle = {
   id: number;
+  uuid?: string;
   paciente: Paciente;
   paciente_nombre: string;
   tutor_nombre: string;
+  tutor_uuid?: string;
   especie_nombre: string;
   sexo_nombre: string;
+  fecha_nacimiento?: string | null;
   edad?: number | null;
   fecha: string;
   motivo_consulta: string;
@@ -71,6 +76,11 @@ export type FichaDetalle = {
   tratamientos: Tratamiento[];
   archivos: Archivo[];
   historial_fichas: FichaHistorial[];
+  // Datos extra del tutor si están disponibles
+  tutor_telefono?: string | null;
+  tutor_email?: string | null;
+  tutor_rut?: string | null;
+  clinica_nombre?: string | null;
 };
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -331,7 +341,7 @@ class PdfBuilder {
     this.doc.setFontSize(20);
     this.doc.setFont("helvetica", "bold");
     this.setColor(COLORS.primary);
-    this.doc.text("Veterinaria Scarlet", MARGIN, 16);
+    this.doc.text(this.ficha.clinica_nombre || "Veterinaria Scarlet", MARGIN, 16);
 
     // Subtitle
     this.doc.setFontSize(11);
@@ -402,26 +412,112 @@ class PdfBuilder {
     // Row 1
     this.ensureSpace(lh);
     printCol("Nombre", this.ficha.paciente_nombre, col1X);
-    printCol("Tutor", this.ficha.tutor_nombre || "-", col2X);
+    printCol("Especie", this.ficha.especie_nombre, col2X);
     this.y += lh;
 
     // Row 2
     this.ensureSpace(lh);
-    printCol("Especie", this.ficha.especie_nombre, col1X);
-    printCol("Raza", p.raza || "-", col2X);
+    printCol("Raza", p.raza || "-", col1X);
+    printCol("Sexo", this.ficha.sexo_nombre, col2X);
     this.y += lh;
 
     // Row 3
     this.ensureSpace(lh);
-    printCol("Sexo", this.ficha.sexo_nombre, col1X);
-    printCol("Color", p.color || "-", col2X);
+    printCol("Color", p.color || "-", col1X);
+    printCol("Edad", formatEdad(p.fecha_nacimiento || this.ficha.fecha_nacimiento), col2X);
     this.y += lh;
 
     // Row 4
     this.ensureSpace(lh);
-    printCol("Edad", formatEdad(p.fecha_nacimiento), col1X);
-    printCol("Esterilizado", p.esterilizado ? "Sí" : "No", col2X);
-    this.y += lh + 2;
+    printCol("Esterilizado", p.esterilizado ? "Sí" : "No", col1X);
+    if (p.chip) printCol("Chip", p.chip, col2X);
+    this.y += lh;
+
+    // Row 5 — fecha nacimiento
+    if (p.fecha_nacimiento || this.ficha.fecha_nacimiento) {
+      this.ensureSpace(lh);
+      printCol("Fecha nacimiento", formatFecha(p.fecha_nacimiento || this.ficha.fecha_nacimiento), col1X);
+      this.y += lh;
+    }
+
+    this.y += 2;
+  }
+
+  private addTutor(): void {
+    this.sectionHeader("Tutor / Propietario");
+
+    const col1X = MARGIN;
+    const col2X = MARGIN + CONTENT_WIDTH / 2 + 2;
+    const lh = 6;
+
+    const printCol = (label: string, value: string | null | undefined, x: number) => {
+      if (!value) return;
+      this.doc.setFontSize(9);
+      this.doc.setFont("helvetica", "bold");
+      this.setColor(COLORS.text);
+      this.doc.text(`${label}:`, x, this.y);
+      const lw = this.doc.getTextWidth(`${label}: `);
+      this.doc.setFont("helvetica", "normal");
+      this.doc.text(value, x + lw, this.y);
+    };
+
+    this.ensureSpace(lh);
+    printCol("Nombre", this.ficha.tutor_nombre, col1X);
+    if (this.ficha.tutor_rut) printCol("RUT", this.ficha.tutor_rut, col2X);
+    this.y += lh;
+
+    if (this.ficha.tutor_telefono || this.ficha.tutor_email) {
+      this.ensureSpace(lh);
+      if (this.ficha.tutor_telefono) printCol("Teléfono", this.ficha.tutor_telefono, col1X);
+      if (this.ficha.tutor_email) printCol("Email", this.ficha.tutor_email, col2X);
+      this.y += lh;
+    }
+
+    this.y += 2;
+  }
+
+  private addDocumentos(): void {
+    if (!this.ficha.archivos || this.ficha.archivos.length === 0) return;
+
+    this.sectionHeader("Documentos Adjuntos");
+
+    const cols = [
+      { label: "Tipo", width: 50 },
+      { label: "Fecha", width: 30 },
+      { label: "Observaciones", width: CONTENT_WIDTH - 50 - 30 },
+    ];
+
+    this.renderTable(
+      cols,
+      this.ficha.archivos.map((a) => [
+        a.tipo_nombre || "Documento",
+        formatFecha(a.fecha),
+        a.observaciones || "-",
+      ])
+    );
+  }
+
+  private addFirma(): void {
+    this.ensureSpace(40);
+    this.y += 8;
+
+    const firmaY = this.y;
+    const col1X = MARGIN;
+    const col2X = MARGIN + CONTENT_WIDTH / 2 + 10;
+    const lineW = 70;
+
+    this.setDraw(COLORS.border);
+    this.doc.setLineWidth(0.3);
+    this.doc.line(col1X, firmaY, col1X + lineW, firmaY);
+    this.doc.setFontSize(8);
+    this.doc.setFont("helvetica", "normal");
+    this.setColor(COLORS.muted);
+    this.doc.text("Firma y timbre del veterinario", col1X, firmaY + 5);
+
+    this.doc.line(col2X, firmaY, col2X + lineW, firmaY);
+    this.doc.text("Firma del tutor / propietario", col2X, firmaY + 5);
+
+    this.y = firmaY + 12;
   }
 
   private addConsulta(): void {
@@ -624,12 +720,15 @@ class PdfBuilder {
   build(): jsPDF {
     this.addHeader();
     this.addPaciente();
+    this.addTutor();
     this.divider();
     this.addSignosVitales();
     this.addConsulta();
     this.addVacunas();
     this.addTratamientos();
+    this.addDocumentos();
     this.addHistorial();
+    this.addFirma();
     this.addFooter();
     return this.doc;
   }

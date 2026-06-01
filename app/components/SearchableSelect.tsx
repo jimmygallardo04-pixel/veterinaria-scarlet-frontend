@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { SEARCH_DEBOUNCE_MS } from "@/lib/constants";
 
 export interface SearchableOption {
   id: number | string;
@@ -26,6 +25,11 @@ interface SearchableSelectProps {
   name?: string;
 }
 
+/** Devuelve true solo si value es un ID real (no vacío, no null, no 0) */
+function hasValue(v: string | number | null | undefined): boolean {
+  return v != null && v !== "" && v !== 0;
+}
+
 export default function SearchableSelect({
   options,
   value,
@@ -37,26 +41,23 @@ export default function SearchableSelect({
   disabled = false,
   searchFields = ["nombre", "descripcion"],
   renderOption,
-  renderSelected,
   className = "",
   name,
 }: SearchableSelectProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [isOpen, setIsOpen] = useState(false);
-  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Get selected option
-  const selectedOption = useMemo(
-    () => options.find((o) => String(o.id) === String(value)),
-    [options, value]
-  );
+  // Opción seleccionada — solo cuando value es un ID real
+  const selectedOption = useMemo(() => {
+    if (!hasValue(value)) return undefined;
+    return options.find((o) => String(o.id) === String(value));
+  }, [options, value]);
 
-  // Debounced search
+  // Opciones filtradas por búsqueda
   const filteredOptions = useMemo(() => {
     if (!searchTerm.trim()) return options;
-
     const term = searchTerm.toLowerCase().trim();
     return options.filter((option) =>
       searchFields.some((field) => {
@@ -67,7 +68,7 @@ export default function SearchableSelect({
     );
   }, [options, searchTerm, searchFields]);
 
-  // Close dropdown when clicking outside
+  // Cerrar al hacer clic fuera
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -75,70 +76,32 @@ export default function SearchableSelect({
         !containerRef.current.contains(event.target as Node)
       ) {
         setIsOpen(false);
+        setSearchTerm("");
       }
     };
-
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Reset highlighted index when options change
-  useEffect(() => {
-    setHighlightedIndex(filteredOptions.length > 0 ? 0 : -1);
-  }, [filteredOptions]);
+  const openDropdown = useCallback(() => {
+    if (disabled) return;
+    setSearchTerm("");
+    setIsOpen(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, [disabled]);
 
-  const handleSearchChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setSearchTerm(e.target.value);
-      setIsOpen(true);
-    },
-    []
-  );
+  const closeDropdown = useCallback(() => {
+    setIsOpen(false);
+    setSearchTerm("");
+  }, []);
 
   const handleSelect = useCallback(
     (option: SearchableOption) => {
       onChange(String(option.id));
       setSearchTerm("");
       setIsOpen(false);
-      inputRef.current?.blur();
     },
     [onChange]
-  );
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (!isOpen) {
-        if (e.key === "ArrowDown" || e.key === "Enter") {
-          setIsOpen(true);
-          e.preventDefault();
-        }
-        return;
-      }
-
-      switch (e.key) {
-        case "ArrowDown":
-          e.preventDefault();
-          setHighlightedIndex((prev) =>
-            prev < filteredOptions.length - 1 ? prev + 1 : prev
-          );
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : prev));
-          break;
-        case "Enter":
-          e.preventDefault();
-          if (highlightedIndex >= 0 && highlightedIndex < filteredOptions.length) {
-            handleSelect(filteredOptions[highlightedIndex]);
-          }
-          break;
-        case "Escape":
-          setIsOpen(false);
-          inputRef.current?.blur();
-          break;
-      }
-    },
-    [isOpen, filteredOptions, highlightedIndex, handleSelect]
   );
 
   const handleClear = useCallback(
@@ -146,22 +109,33 @@ export default function SearchableSelect({
       e.stopPropagation();
       onChange("");
       setSearchTerm("");
+      setIsOpen(false);
     },
     [onChange]
   );
 
-  const toggleOpen = useCallback(() => {
-    setIsOpen((prev) => !prev);
-    if (!isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 0);
-    }
-  }, [isOpen]);
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Escape") {
+        closeDropdown();
+        inputRef.current?.blur();
+      }
+    },
+    [closeDropdown]
+  );
 
-  // Render option content
+  // Lo que muestra el input:
+  // - Abierto: texto de búsqueda (vacío al abrir, el usuario escribe)
+  // - Cerrado con selección: nombre de la opción seleccionada
+  // - Cerrado sin selección: vacío → muestra placeholder
+  const inputDisplayValue = isOpen
+    ? searchTerm
+    : selectedOption
+    ? selectedOption.nombre
+    : "";
+
   const renderOptionContent = (option: SearchableOption) => {
-    if (renderOption) {
-      return renderOption(option);
-    }
+    if (renderOption) return renderOption(option);
     return (
       <div className="flex flex-col">
         <span className="font-medium text-slate-900">{option.nombre}</span>
@@ -170,26 +144,6 @@ export default function SearchableSelect({
         )}
         {option.infoAdicional && (
           <span className="text-xs text-slate-400 mt-0.5">{option.infoAdicional}</span>
-        )}
-      </div>
-    );
-  };
-
-  // Render selected content
-  const renderSelectedContent = () => {
-    if (!selectedOption) return null;
-    if (renderSelected) {
-      return renderSelected(selectedOption);
-    }
-    return (
-      <div className="flex flex-col">
-        <span className="font-medium text-slate-900 truncate">
-          {selectedOption.nombre}
-        </span>
-        {selectedOption.descripcion && (
-          <span className="text-sm text-slate-500 truncate">
-            {selectedOption.descripcion}
-          </span>
         )}
       </div>
     );
@@ -204,41 +158,42 @@ export default function SearchableSelect({
         </label>
       )}
 
-      {/* Input/Search field */}
+      {/* Campo de entrada */}
       <div
         className={`
           flex items-center gap-2 px-3 py-2
-          border border-slate-300 rounded-lg
-          bg-white cursor-text
-          focus-within:ring-2 focus-within:ring-green-500 focus-within:border-transparent
+          border rounded-lg bg-white cursor-text
           transition-shadow
+          ${isOpen ? "ring-2 ring-green-500 border-transparent" : "border-slate-300"}
           ${disabled ? "bg-slate-100 cursor-not-allowed opacity-60" : ""}
         `}
-        onClick={() => !disabled && inputRef.current?.focus()}
+        onClick={() => !disabled && !isOpen && openDropdown()}
       >
         <input
           ref={inputRef}
           type="text"
           className="flex-1 min-w-0 bg-transparent outline-none text-slate-900 placeholder:text-slate-400 text-sm"
           placeholder={placeholder}
-          value={searchTerm}
-          onChange={handleSearchChange}
+          value={inputDisplayValue}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setIsOpen(true);
+          }}
           onKeyDown={handleKeyDown}
-          onFocus={() => !disabled && setIsOpen(true)}
+          onFocus={() => !disabled && !isOpen && openDropdown()}
           disabled={disabled}
-          name={name}
           autoComplete="off"
           role="combobox"
           aria-expanded={isOpen}
           aria-haspopup="listbox"
         />
 
-        {/* Clear button */}
-        {value && !disabled && (
+        {/* Botón limpiar — solo si hay valor seleccionado */}
+        {hasValue(value) && !disabled && (
           <button
             type="button"
             onClick={handleClear}
-            className="text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 transition-colors"
+            className="text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 transition-colors flex-shrink-0"
             aria-label="Limpiar selección"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -247,11 +202,14 @@ export default function SearchableSelect({
           </button>
         )}
 
-        {/* Dropdown arrow */}
+        {/* Flecha */}
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); toggleOpen(); }}
-          className={`text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            isOpen ? closeDropdown() : openDropdown();
+          }}
+          className={`text-slate-400 transition-transform duration-200 flex-shrink-0 ${isOpen ? "rotate-180" : ""}`}
           disabled={disabled}
           aria-label={isOpen ? "Cerrar" : "Abrir"}
         >
@@ -261,12 +219,7 @@ export default function SearchableSelect({
         </button>
       </div>
 
-      {/* Selected value display (when not searching) */}
-      {!searchTerm && selectedOption && !isOpen && (
-        <div className="hidden">{renderSelectedContent()}</div>
-      )}
-
-      {/* Dropdown */}
+      {/* Lista desplegable */}
       {isOpen && (
         <div
           className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto"
@@ -277,33 +230,51 @@ export default function SearchableSelect({
               {emptyMessage}
             </div>
           ) : (
-            filteredOptions.map((option, index) => (
-              <div
-                key={`option-${option.id ?? option.nombre}-${index}`}
-                className={`
-                  px-3 py-2 cursor-pointer transition-colors
-                  ${
-                    index === highlightedIndex
-                      ? "bg-green-50 text-green-900"
-                      : "hover:bg-slate-50"
-                  }
-                  ${String(option.id) === String(value) ? "bg-green-100" : ""}
-                `}
-                onClick={() => handleSelect(option)}
-                onMouseEnter={() => setHighlightedIndex(index)}
-                role="option"
-                aria-selected={String(option.id) === String(value)}
-              >
-                {renderOptionContent(option)}
-              </div>
-            ))
+            filteredOptions.map((option, index) => {
+              // isSelected: true SOLO si hay un value real y coincide con esta opción
+              const isSelected =
+                hasValue(value) && String(option.id) === String(value);
+
+              return (
+                <div
+                  key={`option-${option.id}-${index}`}
+                  className={`
+                    px-3 py-2 cursor-pointer transition-colors flex items-center gap-2
+                    ${isSelected ? "bg-green-100 hover:bg-green-100" : "hover:bg-slate-50"}
+                  `}
+                  onClick={() => handleSelect(option)}
+                  role="option"
+                  aria-selected={isSelected}
+                >
+                  {/* Checkmark solo en la opción seleccionada */}
+                  <span
+                    className={`flex-shrink-0 w-4 h-4 ${
+                      isSelected ? "text-green-600" : "text-transparent"
+                    }`}
+                  >
+                    <svg viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z" />
+                    </svg>
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    {renderOptionContent(option)}
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
       )}
 
-      {/* Hidden select for form submission */}
+      {/* Select oculto para formularios nativos */}
       {name && (
-        <select name={name} value={value || ""} onChange={(e) => onChange(e.target.value)} className="hidden">
+        <select
+          name={name}
+          value={value || ""}
+          onChange={(e) => onChange(e.target.value)}
+          className="hidden"
+          aria-hidden="true"
+        >
           <option value="">Seleccionar</option>
           {options.map((option) => (
             <option key={option.id} value={option.id}>

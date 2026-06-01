@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
@@ -69,6 +69,7 @@ type FichaDetalle = {
   paciente: Paciente;
   paciente_nombre: string;
   tutor_nombre: string;
+  tutor_uuid?: string;
   especie_nombre: string;
   sexo_nombre: string;
   fecha_nacimiento?: string | null;
@@ -87,10 +88,16 @@ type FichaDetalle = {
   tratamientos: Tratamiento[];
   archivos: Archivo[];
   historial_fichas: FichaHistorial[];
+  // Campos enriquecidos para el PDF
+  tutor_telefono?: string | null;
+  tutor_email?: string | null;
+  tutor_rut?: string | null;
+  clinica_nombre?: string | null;
 };
 
 export default function DetalleFichaPage() {
   const params = useParams();
+  const router = useRouter();
   const fichaId = params.uuid as string;
 
   const [ficha, setFicha] = useState<FichaDetalle | null>(null);
@@ -102,6 +109,9 @@ export default function DetalleFichaPage() {
   // Confirm dialog para eliminar archivo
   const [confirmEliminar, setConfirmEliminar] = useState(false);
   const [archivoAEliminar, setArchivoAEliminar] = useState<Archivo | null>(null);
+
+  // Confirm dialog para eliminar ficha
+  const [confirmEliminarFicha, setConfirmEliminarFicha] = useState(false);
 
   const cargarFicha = async () => {
     try {
@@ -227,6 +237,21 @@ export default function DetalleFichaPage() {
     }
   };
 
+  // ── Eliminar ficha ───────────────────────────────────────────────────────
+  const eliminarFicha = async () => {
+    if (!ficha) return;
+    setConfirmEliminarFicha(false);
+
+    try {
+      const res = await apiFetch(`/fichas/${fichaId}/`, { method: "DELETE" });
+      if (!res.ok) { toast.error("No se pudo eliminar la ficha"); return; }
+      toast.success("Ficha eliminada correctamente");
+      router.push("/fichas");
+    } catch {
+      toast.error("Error de conexión");
+    }
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -272,9 +297,33 @@ export default function DetalleFichaPage() {
 
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => {
+              onClick={async () => {
                 try {
-                  exportarFichaPDF(ficha);
+                  // Enriquecer con datos del tutor y clínica antes de exportar
+                  let fichaEnriquecida = { ...ficha };
+                  try {
+                    const [resTutor, resMe] = await Promise.all([
+                      apiFetch(`/tutores/${ficha.paciente.tutor_uuid || ficha.tutor_uuid}/`),
+                      apiFetch("/me/"),
+                    ]);
+                    if (resTutor.ok) {
+                      const tutor = await resTutor.json();
+                      fichaEnriquecida = {
+                        ...fichaEnriquecida,
+                        tutor_telefono: tutor.telefono || null,
+                        tutor_email: tutor.email || null,
+                        tutor_rut: tutor.rut || null,
+                      };
+                    }
+                    if (resMe.ok) {
+                      const me = await resMe.json();
+                      fichaEnriquecida = {
+                        ...fichaEnriquecida,
+                        clinica_nombre: me.clinica_nombre || null,
+                      };
+                    }
+                  } catch { /* si falla, exportar con datos básicos */ }
+                  exportarFichaPDF(fichaEnriquecida);
                 } catch {
                   toast.error("No se pudo generar el PDF");
                 }
@@ -304,6 +353,12 @@ export default function DetalleFichaPage() {
             <Link href={`/pacientes/${ficha.paciente.uuid}`} className="btn-secondary">
               Ver paciente
             </Link>
+            <button
+              onClick={() => setConfirmEliminarFicha(true)}
+              className="btn-danger"
+            >
+              Eliminar ficha
+            </button>
           </div>
         </div>
 
@@ -589,6 +644,18 @@ export default function DetalleFichaPage() {
         requireKeyword="ELIMINAR"
         onConfirm={eliminarArchivo}
         onCancel={() => { setConfirmEliminar(false); setArchivoAEliminar(null); }}
+      />
+
+      {/* Confirm eliminar ficha */}
+      <ConfirmDialog
+        open={confirmEliminarFicha}
+        title="Eliminar ficha clínica"
+        message="¿Estás seguro? Esta acción eliminará la ficha clínica del sistema. Los tratamientos y vacunas vinculados no se eliminarán."
+        confirmLabel="Eliminar"
+        danger
+        requireKeyword="ELIMINAR"
+        onConfirm={eliminarFicha}
+        onCancel={() => setConfirmEliminarFicha(false)}
       />
     </main>
   );

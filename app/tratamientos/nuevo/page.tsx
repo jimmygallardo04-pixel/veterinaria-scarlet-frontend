@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import BackButton from "@/app/components/BackButton";
 
-type Paciente = { uuid: string; nombre: string; tutor_nombre: string };
+type Paciente = { id: number; uuid: string; nombre: string; tutor_nombre: string };
 
 const formInicial = {
   paciente: "",
@@ -83,7 +83,7 @@ export default function NuevoTratamientoPage() {
       const res = await apiFetch("/tratamientos/", {
         method: "POST",
         body: JSON.stringify({
-          paciente: form.paciente,
+          paciente: pacienteSeleccionado?.id,
           medicamento: form.medicamento,
           dosis: form.dosis,
           frecuencia: form.frecuencia,
@@ -100,7 +100,18 @@ export default function NuevoTratamientoPage() {
       }
 
       toast.success("Tratamiento registrado correctamente");
-      router.push(fichaParam ? `/fichas/${fichaParam}` : "/fichas");
+
+      // Redirigir al origen correcto:
+      // 1. Si viene desde una ficha → volver a la ficha
+      // 2. Si viene desde un paciente → volver al paciente
+      // 3. Fallback → lista de tratamientos
+      if (fichaParam) {
+        router.push(`/fichas/${fichaParam}`);
+      } else if (pacienteParam) {
+        router.push(`/pacientes/${pacienteParam}`);
+      } else {
+        router.push("/pacientes");
+      }
     } catch {
       toast.error("Error de conexión");
     } finally {
@@ -109,7 +120,11 @@ export default function NuevoTratamientoPage() {
   };
 
   const pacienteSeleccionado = pacientes.find((p) => p.uuid === form.paciente);
-  const backHref = fichaParam ? `/fichas/${fichaParam}` : "/fichas";
+  const backHref = fichaParam
+    ? `/fichas/${fichaParam}`
+    : pacienteParam
+    ? `/pacientes/${pacienteParam}`
+    : "/pacientes";
 
   return (
     <main className="min-h-screen bg-slate-100 p-8">
